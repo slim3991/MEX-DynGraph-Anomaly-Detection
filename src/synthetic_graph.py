@@ -1,15 +1,8 @@
 from functools import cache
 import networkx as nx
 import numpy as np
-import random
 import matplotlib.pyplot as plt
 from net_traffic_gen import PoissonTraffic
-
-abiline = np.load("./data/abiline_ten.npy")
-
-num_nodes = 50
-num_edges = num_nodes + 30
-days = 28
 
 
 @cache
@@ -24,35 +17,60 @@ def add_ts(A, path, traffic) -> None:
         A[source, dest, :] += traffic
 
 
-while True:
-    G = nx.gnm_random_graph(num_nodes, num_edges)
-    if nx.is_connected(G):
-        break
+class DynamicNetGraphGen:
+    def __init__(self, n_nodes: int, n_edges: int, n_days: int):
+        self._n_nodes = n_nodes
+        self._n_edges = n_edges
+        self._n_days = n_days
+        self._adj_mat = np.zeros((n_nodes, n_nodes, n_days * 24))
+        self._traffic_generator = PoissonTraffic(n_days)
+        self._generated = False
 
-pt = PoissonTraffic(days)
+    def is_generated(self):
+        return self._generated
 
-adj_mat = np.zeros((num_nodes, num_nodes, days * 24))
+    @property
+    def adj_mat(self):
+        if self._generated:
+            return self._adj_mat
+        else:
+            raise ValueError("Adjacency matrix not generated!")
 
-for i in range(num_nodes):
-    base_scaling = np.random.uniform(100, 800)
-    for j in range(num_nodes):
-        specific_scaling = np.random.uniform(-base_scaling / 2, base_scaling / 2)
-        ts = pt.generate(base_scaling + specific_scaling)
-        shortest_path = get_shortest_path(G, i, j)
-        add_ts(adj_mat, shortest_path, ts)
+    def generate(self):
+        while True:
+            G = nx.gnm_random_graph(self._n_nodes, self._n_edges)
+            if nx.is_connected(G):
+                break
+        for i in range(self._n_nodes):
+            base_scaling = np.random.uniform(100, 800)
+            for j in range(self._n_nodes):
 
-plt.ion()
-fig, ax = plt.subplots()
-vmax = adj_mat.max()  # or a fixed value you choose
-vmin = adj_mat.min()  # often 0
-# vmax = 2000  # or a fixed value you choose
-# vmin = abiline.min()  # often 0
-# length = abiline.shape[2]
+                specific_scaling = np.random.uniform(
+                    -0.5 * base_scaling, 0.5 * base_scaling
+                )
+                ts = self._traffic_generator.generate(base_scaling + specific_scaling)
+                shortest_path = get_shortest_path(G, i, j)
+                add_ts(self._adj_mat, shortest_path, ts)
+        self._generated = True
 
-im = ax.imshow(adj_mat[:, :, 0], vmin=vmin, vmax=vmax, origin="lower")
-fig.colorbar(im, ax=ax)
 
-for i in range(200):
-    plt.title(f"day: {i//24}, time: {i % 24}")
-    im.set_data(adj_mat[:, :, i])
-    plt.pause(0.1)
+if __name__ == "__main__":
+    gGen = DynamicNetGraphGen(20, 20, 28)
+    gGen.generate()
+    adj_mat = gGen.adj_mat
+
+    plt.ion()
+    fig, ax = plt.subplots()
+    vmax = adj_mat.max()  # or a fixed value you choose
+    vmin = adj_mat.min()  # often 0
+    # vmax = 2000  # or a fixed value you choose
+    # vmin = abiline.min()  # often 0
+    # length = abiline.shape[2]
+
+    im = ax.imshow(adj_mat[:, :, 0], vmin=vmin, vmax=vmax, origin="lower")
+    fig.colorbar(im, ax=ax)
+
+    for i in range(200):
+        plt.title(f"day: {i//24}, time: {i % 24}")
+        im.set_data(adj_mat[:, :, i])
+        plt.pause(0.1)
