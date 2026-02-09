@@ -4,10 +4,11 @@ import numpy.typing as npt
 
 
 class PoissonTraffic:
-    def __init__(self, days: int) -> None:
+    def __init__(self, days: int, drift: float) -> None:
         self.days = days
         self.total_hours = 24 * days
         self._window = self._generate_window()
+        self.drift = drift
 
     def _generate_window(self) -> npt.NDArray:
         window_size = 8
@@ -28,15 +29,16 @@ class PoissonTraffic:
 
             if day_of_week < 5:
                 if 8 <= hour_of_day <= 17:
-                    signal[shifted_h] = 0.6
+                    signal[shifted_h] = 1
                 elif 18 <= hour_of_day <= 21:
-                    signal[shifted_h] = 0.4
+                    signal[shifted_h] = 0.6
             else:
                 if 10 <= hour_of_day <= 18:
-                    signal[shifted_h] = 0.3
+                    signal[shifted_h] = 0.5
 
-        drift = np.cumsum(np.random.normal(0, 0.02, self.total_hours))
-        signal = np.clip(signal + drift, 0.05, None)
+        drift = np.cumsum(np.random.normal(0, self.drift, self.total_hours))
+        drift = np.clip(drift, 0, None)
+        signal = np.clip(signal + drift, 0, None)
 
         mean_curve = np.convolve(signal, self._window, mode="same")
         return np.random.poisson(scale * mean_curve)
@@ -45,7 +47,7 @@ class PoissonTraffic:
 if __name__ == "__main__":
     data = np.load("data/abiline_ten.npy")
 
-    pt = PoissonTraffic(28)
+    pt = PoissonTraffic(14, 0.01)
 
-    plt.plot(pt.generate(300))
+    plt.plot(pt.generate(200))
     plt.show()

@@ -23,7 +23,7 @@ class DynamicNetGraphGen:
         self._n_edges = n_edges
         self._n_days = n_days
         self._adj_mat = np.zeros((n_nodes, n_nodes, n_days * 24))
-        self._traffic_generator = PoissonTraffic(n_days)
+        self._traffic_generator = PoissonTraffic(n_days, 0.02)
         self._generated = False
 
     def is_generated(self):
@@ -41,6 +41,8 @@ class DynamicNetGraphGen:
             G = nx.gnm_random_graph(self._n_nodes, self._n_edges)
             if nx.is_connected(G):
                 break
+
+        traffic_tensor = np.zeros((self._n_nodes, self._n_nodes, self._n_days * 24))
         for i in range(self._n_nodes):
             base_scaling = np.random.uniform(100, 800)
             for j in range(self._n_nodes):
@@ -48,14 +50,37 @@ class DynamicNetGraphGen:
                 specific_scaling = np.random.uniform(
                     -0.5 * base_scaling, 0.5 * base_scaling
                 )
-                ts = self._traffic_generator.generate(base_scaling + specific_scaling)
-                shortest_path = get_shortest_path(G, i, j)
-                add_ts(self._adj_mat, shortest_path, ts)
+                traffic_tensor[i, j] = self._traffic_generator.generate(
+                    base_scaling + specific_scaling
+                )
+        for t in range(self._n_days * 24):
+            hour_load = np.zeros((self._n_nodes, self._n_nodes))
+            for u, v in G.edges():
+                G[u][v]["weight"] = 1.0
+
+            for i in range(self._n_nodes):
+                for j in range(self._n_nodes):
+                    if i == j:
+                        continue
+
+                    traffic = traffic_tensor[i, j, t]
+
+                    # compute shortest path on CURRENT weights
+                    path = nx.shortest_path(G, source=i, target=j, weight="weight")
+
+                    # push traffic and update congestion
+                    for u, v in zip(path[:-1], path[1:]):
+                        hour_load[u, v] += traffic
+
+                        # congestion-aware weight update
+                        G[u][v]["weight"] += hour_load[u, v]
+            self._adj_mat[:, :, t] = hour_load
+
         self._generated = True
 
 
 if __name__ == "__main__":
-    gGen = DynamicNetGraphGen(20, 20, 28)
+    gGen = DynamicNetGraphGen(20, 50, 28)
     gGen.generate()
     adj_mat = gGen.adj_mat
 
