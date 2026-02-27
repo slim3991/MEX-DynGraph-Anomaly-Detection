@@ -2,35 +2,52 @@ import numpy as np
 
 # Load data (equivalent to readmatrix)
 A = np.loadtxt("./raw_data/email-Eu-temporal.txt")
+print(np.unique(A[:, 0]).__len__())
 
-# MATLAB: min(A(:,2))
-print(np.min(A[:, 1]))
+n = 200
+
 
 # Convert seconds → hours and round
 A[:, 2] = np.round(A[:, 2] / (60**2))
 
-# MATLAB uses 1-based indexing; Python uses 0-based
-# This shift preserves MATLAB-style node numbering
 A[:, 0] += 1
 A[:, 1] += 1
 
+values, counts = np.unique(A[:, 0], return_counts=True)
+top_n_val = values[np.argsort(counts)[-n:]]
+A = A[np.isin(A[:, 0], top_n_val)]
+
+values, counts = np.unique(A[:, 1], return_counts=True)
+top_n_val = values[np.argsort(counts)[-n:]]
+A = A[np.isin(A[:, 1], top_n_val)]
+print(A.shape)
+
+unique_vals, inverse = np.unique(A[:, 0], return_inverse=True)
+A[:, 0] = inverse + 1
+unique_vals, inverse = np.unique(A[:, 1], return_inverse=True)
+A[:, 1] = inverse + 1
+# exit()
+
 # Keep first 16000 rows
-A = A[:16000, :]
+# A = A[:16000, :]
+
 
 # Start time
 start = np.min(A[:, 2])
 
 # Unique times
 times = np.unique(A[:, 2])
-times_minus_start = times - start
+# A[:, 2] = times - start
 nt = len(times)
 
 # Number of nodes
 nNodes = int(max(A[:, 0].max(), A[:, 1].max()))
+print(f"nt: {nt}, nn: {nNodes}")
 
 # Estimated size (float32 = 4 bytes)
 est_size_gb = nt * nNodes * nNodes * 4 / 1e9
 print(f"est size: {est_size_gb:.2f}Gb")
+# exit()
 
 # Initialize tensor
 T = np.zeros((nNodes, nNodes, nt), dtype=np.float32)
