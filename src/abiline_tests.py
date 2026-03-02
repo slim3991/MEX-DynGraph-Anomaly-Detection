@@ -12,20 +12,40 @@ from utils.model_eval import *
 
 
 T = np.load("data/abiline_ten.npy")
+T = T[:, :, :5000]
 for i in range(12):
     for j in range(12):
         T[i, j, :] = normalize_tensor(T[i, j, :], "minmax")
 
 
 source, dest = np.random.randint(0, 11), np.random.randint(0, 11)
+# T = de_anomalize_tensor(T, 20)
+# L = np.zeros_like(T, dtype=np.bool)
+#
+# for i in range(120):
+#     source, dest = np.random.randint(0, 11), np.random.randint(0, 11)
+#     sigma = float(np.std(T[source, dest, :]))
+#     duration = np.random.randint(low=10, high=500)
+#     start = np.random.randint(low=10, high=20_000)
+#     shape = generate_shape(
+#         duration=duration,
+#         begin_shape="ramp",
+#         end_shape="ramp",
+#         ratios=(1, 0, 5),
+#         amplitude=np.random.uniform(0.3, 1.0),
+#     )
+#
+#     # start = 20_000
+#     T[source, dest, start : start + duration] += shape
+#     L[source, dest, start : start + duration] = 1
 T = de_anomalize_tensor(T, 20)
 L = np.zeros_like(T, dtype=np.bool)
 
-for i in range(120):
+for i in range(20):
     source, dest = np.random.randint(0, 11), np.random.randint(0, 11)
     sigma = float(np.std(T[source, dest, :]))
-    duration = np.random.randint(low=10, high=500)
-    start = np.random.randint(low=10, high=20_000)
+    duration = np.random.randint(low=10, high=100)
+    start = np.random.randint(low=10, high=200)
     shape = generate_shape(
         duration=duration,
         begin_shape="ramp",
@@ -37,6 +57,7 @@ for i in range(120):
     # start = 20_000
     T[source, dest, start : start + duration] += shape
     L[source, dest, start : start + duration] = 1
+
 
 # plt.plot(T[source, dest, :], label="smoothed-w anomaly")
 

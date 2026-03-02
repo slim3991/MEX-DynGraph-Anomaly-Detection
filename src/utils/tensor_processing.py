@@ -82,25 +82,56 @@ def make_mode_similarity(
 
 
 def make_mode_knn(
-    tensor: T_tensor,
+    tensor,
     mode: int,
     k_neighbors: int = 10,
     n_trees: int = 10,
-) -> T_tensor:
+    sparse: bool = False,
+):
+    """
+    Build a k-NN graph from the unfolding of a tensor along a specific mode.
 
+    Parameters
+    ----------
+    tensor : ndarray or tensorly tensor
+        Input tensor.
+    mode : int
+        Mode along which to unfold.
+    k_neighbors : int
+        Number of neighbors for the k-NN graph.
+    n_trees : int
+        Number of trees for Annoy.
+    sparse : bool
+        If True, return sparse CSR matrix. If False, return dense NumPy array.
+
+    Returns
+    -------
+    knn_graph : np.ndarray or csr_matrix
+        k-NN adjacency matrix.
+    """
     T_unfolded = tl.base.unfold(tensor, mode=mode)
     nr, nc = T_unfolded.shape
     print(f"mode:{mode}, shapes:{(nr,nc)}")
-    t = AnnoyIndex(nc, "euclidean")
 
+    t = AnnoyIndex(nc, "euclidean")
     for i in range(nr):
         t.add_item(i, T_unfolded[i, :])
+    t.build(n_trees=n_trees)
 
-    t.build(n_trees=n_trees)  # 10 trees
-    knn_graph = lil_matrix((nr, nr))
+    if sparse:
+        knn_graph = lil_matrix((nr, nr))
+    else:
+        knn_graph = np.zeros((nr, nr), dtype=np.float32)
+
     for i in range(nr):
         indices = t.get_nns_by_item(i, k_neighbors + 1)
         neighbors = [idx for idx in indices if idx != i][:k_neighbors]
-        knn_graph[i, neighbors] = 1
-    knn_graph = knn_graph.tocsr()
+        if sparse:
+            knn_graph[i, neighbors] = 1
+        else:
+            knn_graph[i, neighbors] = 1.0
+
+    if sparse:
+        knn_graph = knn_graph.tocsr()
+
     return knn_graph
