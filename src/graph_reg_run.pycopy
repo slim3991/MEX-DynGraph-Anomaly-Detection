@@ -27,7 +27,7 @@ def evaluate(T, rank, recomp_func, events_based=True, test=None):
     n = 10
     metric = None
     events = None
-    # T_hat = preprocess(T)
+    T_hat = preprocess(T)
 
     for _ in range(n):
         T_iter = deepcopy(T_hat)

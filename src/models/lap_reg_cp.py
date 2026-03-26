@@ -26,14 +26,16 @@ def detect_anomalies(S, factors, epsilon):
     return E, anomaly_indices
 
 
-def detect_anomalies_soft(T, T_hat):
+def detect_anomalies_soft(T, T_hat, threshold: float | None = None):
     res = T - tl.cp_to_tensor(T_hat)
-    abs_res = np.abs(res)
-    # sigma = np.median(abs_res[abs_res < np.percentile(abs_res, 50)]) / 0.6745
-
-    sigma = np.median(np.abs(res)) / 0.6745
-    # lam = 2.5 * sigma
-    lam = sigma * np.sqrt(2 * np.log(res.size))
+    if threshold is None:
+        # abs_res = np.abs(res)
+        # sigma = np.median(abs_res[abs_res < np.percentile(abs_res, 50)]) / 0.6745
+        sigma = np.median(np.abs(res)) / 0.6745
+        # lam = 2.5 * sigma
+        lam = sigma * np.sqrt(2 * np.log(res.size))
+    else:
+        lam = threshold
 
     E = np.sign(res) * np.maximum(np.abs(res) - lam, 0)
     return E
@@ -47,6 +49,7 @@ def graph_regularized_als(
     n_iter=20,
     n_E=1000,
     verbose=False,
+    threshold=None,
 ):
     weights, factors = tl.decomposition.parafac(
         tensor, rank=rank, n_iter_max=10, init="random"

@@ -7,11 +7,13 @@ from scipy.sparse import lil_matrix, csr_matrix, diags, eye
 type T_tensor = np.typing.NDArray | tl.tensor
 
 
-def preprocess(T):
+def preprocess(T, rank, keep_percentile, alpha):
     for i in range(12):
         for j in range(12):
             T[i, j, :] = normalize_tensor(T[i, j, :], "minmax")
-    T = de_anomalize_tensor(T, low_rank=20, keep_pecentile=95, alpha=0.1)
+    T = de_anomalize_tensor(
+        T, low_rank=rank, keep_pecentile=keep_percentile, alpha=alpha
+    )
     return T
 
 
