@@ -4,10 +4,8 @@ import matplotlib.pyplot as plt
 import tensorly as tl
 from tensorly import tenalg
 
-from models.incremental_svd import IncrementalSVD
 
-
-T = np.load("data/DDos_data.npy")
+T = np.load("data/abilene_ten.npy")
 # T = T[:100, :100, :]
 print(T.shape)
 
@@ -22,18 +20,18 @@ rank_time = 20
 k = rank_time
 
 
-# flat_T = T.reshape(-1, nt)
+flat_T = T.reshape(-1, nt)
 
-# S = flat_T.T @ flat_T  # Covariance matrix
-# np.fill_diagonal(S, 0)
+S = flat_T.T @ flat_T  # Covariance matrix
+np.fill_diagonal(S, 0)
 
-# L = np.sum(S, axis=1) - S
+L = np.sum(S, axis=1) - S
 
-# D, F = np.linalg.eigh(L)
-# idx = np.argsort(np.abs(D))
-# D_sorted = D[idx]
-# F_sorted = F[:, idx]
-# Fk = F_sorted[:, :k]
+D, F = np.linalg.eigh(L)
+idx = np.argsort(np.abs(D))
+D_sorted = D[idx]
+F_sorted = F[:, idx]
+Fk = F_sorted[:, :k]
 
 # plt.pcolor(F_sorted)
 # plt.plot(D_sorted)
@@ -42,6 +40,10 @@ k = rank_time
 
 T = tl.tensor(T)
 
+decomp = tl.decomposition.tucker(T, rank=10)
+
+
+exit()
 # temp = tl.base.unfold(T, 2)
 # non_zero_column_indices = tl.where(tl.sum(tl.abs(temp), axis=0) != 0)[0]
 # temp = temp[:, non_zero_column_indices]
@@ -103,12 +105,6 @@ del T_hat
 
 
 gc.collect()
-
-Labels = np.load("data/DDos_labels.npy")
-# Labels = Labels[:100, :100, :]
-Labels = Labels == 1
-err = (err - err.min()) / (err.max() - err.min() + 1e-8)
-err = err > 0.5  # A more standard threshold
 
 
 TP = np.sum(Labels & err)

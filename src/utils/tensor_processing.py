@@ -2,9 +2,17 @@ from typing import Literal
 from annoy import AnnoyIndex
 import numpy as np
 import tensorly as tl
-from scipy.sparse import lil_matrix
+from scipy.sparse import lil_matrix, csr_matrix, diags, eye
 
 type T_tensor = np.typing.NDArray | tl.tensor
+
+
+def preprocess(T):
+    for i in range(12):
+        for j in range(12):
+            T[i, j, :] = normalize_tensor(T[i, j, :], "minmax")
+    T = de_anomalize_tensor(T, low_rank=20, keep_pecentile=95, alpha=0.1)
+    return T
 
 
 def de_anomalize_tensor(
@@ -56,82 +64,106 @@ def normalize_tensor(tensor, method="zscore", eps=1e-10):
         raise ValueError("Unsupported normalization method")
 
 
-def make_mode_similarity(
-    tensor: T_tensor,
-    mode: int,
-    sim_type: Literal["covariance", "gaussian", "sim_hash"],
-    sigma: float = 1,
-) -> T_tensor:
-    T = tensor.copy()
-    T = tl.base.unfold(T, mode=mode)
-    if sim_type == "covariance":
-        W = T @ T.T
-        W = np.fill_diagonal(W, 0)
-        return W
-    elif sim_type == "gaussian":
-        _, nc = T.shape
-        W = np.zeros((nc, nc))
-        for i in range(nc):
-            for j in range(nc):
-                if i == j:
-                    return
-                W[i, j] = np.exp(-tl.norm(T[i, :] - T[j, :]) / sigma)
-        return W
-    else:
-        print(f"{sim_type}:not supported...")
-
-
 def make_mode_knn(
     tensor,
     mode: int,
-    k_neighbors: int = 10,
+    k: int = 10,
     n_trees: int = 10,
-    sparse: bool = False,
+    sparse: bool = True,
+    distance: str = "euclidean",
 ):
     """
-    Build a k-NN graph from the unfolding of a tensor along a specific mode.
+    Build a k-NN adjacency matrix from a tensor unfolding.
 
     Parameters
     ----------
     tensor : ndarray or tensorly tensor
-        Input tensor.
     mode : int
-        Mode along which to unfold.
-    k_neighbors : int
-        Number of neighbors for the k-NN graph.
+        Mode along which to unfold
+    k : int
+        Number of neighbors
     n_trees : int
-        Number of trees for Annoy.
+        Number of trees for Annoy
     sparse : bool
-        If True, return sparse CSR matrix. If False, return dense NumPy array.
+        Return sparse or dense matrix
 
     Returns
     -------
-    knn_graph : np.ndarray or csr_matrix
-        k-NN adjacency matrix.
+    W : csr_matrix or np.ndarray
+        k-NN adjacency matrix
     """
-    T_unfolded = tl.base.unfold(tensor, mode=mode)
-    nr, nc = T_unfolded.shape
-    print(f"mode:{mode}, shapes:{(nr,nc)}")
+    X = tl.base.unfold(tensor, mode=mode)
+    n_samples, n_features = X.shape
+    # print(n_samples, n_features)
 
-    t = AnnoyIndex(nc, "euclidean")
-    for i in range(nr):
-        t.add_item(i, T_unfolded[i, :])
-    t.build(n_trees=n_trees)
+    index = AnnoyIndex(n_features, metric=distance)
+    for i in range(n_samples):
+        index.add_item(i, X[i])
+    index.build(n_trees)
 
-    if sparse:
-        knn_graph = lil_matrix((nr, nr))
+    W = lil_matrix((n_samples, n_samples))
+
+    for i in range(n_samples):
+        neighbors = index.get_nns_by_item(i, k + 1)
+        neighbors = [j for j in neighbors if j != i][:k]
+        W[i, neighbors] = 1
+
+    W = W.tocsr()
+
+    if not sparse:
+        return W.toarray()
+    return W
+
+
+def make_mode_laplacian(
+    tensor,
+    mode: int,
+    k: int = 10,
+    n_trees: int = 10,
+    normalize: bool = False,
+    sparse: bool = True,
+    measure: str = "euclidian",
+):
+    """
+    Construct graph Laplacian from tensor mode k-NN graph.
+
+    Parameters
+    ----------
+    tensor : ndarray or tensorly tensor
+    mode : int
+    k : int
+    n_trees : int
+    normalize : bool
+        If True, compute normalized Laplacian
+    sparse : bool
+        Return sparse or dense matrix
+
+    Returns
+    -------
+    L : csr_matrix or np.ndarray
+        Graph Laplacian
+    """
+    # Build symmetric adjacency
+    W = make_mode_knn(
+        tensor, mode=mode, k=k, n_trees=n_trees, sparse=True, distance=measure
+    )
+    W = 0.5 * (W + W.T)
+
+    deg = np.array(W.sum(axis=1)).flatten()
+
+    if normalize:
+        with np.errstate(divide="ignore"):
+            d_inv_sqrt = deg**-0.5
+        d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.0
+
+        D_inv_sqrt = diags(d_inv_sqrt)
+        I = eye(W.shape[0], format="csr")
+
+        L = I - D_inv_sqrt @ W @ D_inv_sqrt
     else:
-        knn_graph = np.zeros((nr, nr), dtype=np.float32)
+        D = diags(deg)
+        L = D - W
 
-    for i in range(nr):
-        indices = t.get_nns_by_item(i, k_neighbors + 1)
-        neighbors = [idx for idx in indices if idx != i][:k_neighbors]
-        if sparse:
-            knn_graph[i, neighbors] = 1
-        else:
-            knn_graph[i, neighbors] = 1.0
-
-    if sparse:
-        knn_graph = knn_graph.tocsr()
-
-    return knn_graph
+    if not sparse:
+        return L.toarray()
+    return L

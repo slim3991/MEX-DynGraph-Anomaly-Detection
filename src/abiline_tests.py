@@ -1,153 +1,95 @@
-import gc
-from math import factorial
+from itertools import product
 import matplotlib.pyplot as plt
 import numpy as np
+from sklearn.preprocessing import normalize
 import tensorly as tl
+import optuna
 
-# from models.incremental_svd import IncrementalSVD
-
-from utils.tensor_processing import de_anomalize_tensor, normalize_tensor
+from models.lap_reg_cp import graph_regularized_als, estimate_from_laps
+from utils.tensor_processing import (
+    de_anomalize_tensor,
+    make_mode_knn,
+    make_mode_laplacian,
+    normalize_tensor,
+)
 from utils.anomaly_injector import *
 from utils.model_eval import *
 
 
 T = np.load("data/abiline_ten.npy")
-T = T[:, :, :5000]
-for i in range(12):
-    for j in range(12):
-        T[i, j, :] = normalize_tensor(T[i, j, :], "minmax")
-
-
-source, dest = np.random.randint(0, 11), np.random.randint(0, 11)
-# T = de_anomalize_tensor(T, 20)
-# L = np.zeros_like(T, dtype=np.bool)
-#
-# for i in range(120):
-#     source, dest = np.random.randint(0, 11), np.random.randint(0, 11)
-#     sigma = float(np.std(T[source, dest, :]))
-#     duration = np.random.randint(low=10, high=500)
-#     start = np.random.randint(low=10, high=20_000)
-#     shape = generate_shape(
-#         duration=duration,
-#         begin_shape="ramp",
-#         end_shape="ramp",
-#         ratios=(1, 0, 5),
-#         amplitude=np.random.uniform(0.3, 1.0),
-#     )
-#
-#     # start = 20_000
-#     T[source, dest, start : start + duration] += shape
-#     L[source, dest, start : start + duration] = 1
-T = de_anomalize_tensor(T, 20)
-L = np.zeros_like(T, dtype=np.bool)
-
-for i in range(20):
-    source, dest = np.random.randint(0, 11), np.random.randint(0, 11)
-    sigma = float(np.std(T[source, dest, :]))
-    duration = np.random.randint(low=10, high=100)
-    start = np.random.randint(low=10, high=200)
-    shape = generate_shape(
-        duration=duration,
-        begin_shape="ramp",
-        end_shape="ramp",
-        ratios=(1, 0, 5),
-        amplitude=np.random.uniform(0.3, 1.0),
-    )
-
-    # start = 20_000
-    T[source, dest, start : start + duration] += shape
-    L[source, dest, start : start + duration] = 1
-
-
-# plt.plot(T[source, dest, :], label="smoothed-w anomaly")
+T = T[:, :, : 12 * 24 * 7 * 4]
+# T = T[:, :, 10_000:15_000]
+for i, j in product(range(12), repeat=2):
+    T[i, j, :] = normalize_tensor(T[i, j, :], "minmax")
 
 # T = normalize_tensor(T, "minmax")
+source, dest = np.random.randint(0, 11), np.random.randint(0, 11)
+# source, dest = 5, 8
 
-# plt.plot(T[source, dest, :])
-# plt.plot(L[source, dest, :])
-# plt.show()
-# exit()
+T = de_anomalize_tensor(T, low_rank=20, keep_pecentile=95, alpha=0.4)
+
+# best_score =score: {best_score}, best val {best_val}")
+# best (7,9,1,3)
+rank = 3
+
+laps = []
+# laps.append(make_laplacian(T, mode=0, k=11))
+# laps.append(make_laplacian(T, mode=1, k=1))
+# laps.append(make_laplacian(T, mode=2, k=300))
 
 
-# Combine masks
+def plot_regualrizaton_tensor():
+    laps = []
+    laps.append(make_mode_laplacian(T, mode=0, k=12))
+    laps.append(make_mode_laplacian(T, mode=1, k=12))
+    laps.append(make_mode_laplacian(T, mode=2, k=500))
+    factors = estimate_from_laps(rank=rank, laps=laps, mode_shapes=(0, 1, 2))
+    x_hat = tl.cp_to_tensor(factors)
+
+    for i in range(12):
+        for j in range(12):
+            x_hat[i, j, :] = normalize_tensor(x_hat[i, j, :], "minmax")
+
+    plt.plot(T[source, dest, :], alpha=0.5, label="Original data")
+    plt.plot(x_hat[source, dest, :], label="Pure Regularizer (scaled)")
+    plt.title("Regularizers pure effect")
+    plt.xlabel("Time")
+    plt.legend()
+    plt.show()
+
+
+def decomp_recomp(T: tl.tensor, rank: int):
+    init = "random" if rank > 12 else "svd"
+    weights, factors = tl.decomposition.parafac2(T, rank=rank, verbose=False, init=init)
+    reconst = tl.cp_to_tensor(cp_tensor=(weights, factors))
+    return reconst
+
+
+orig_shape = T.shape
+# T = np.reshape(T, (12 * 24, 7, -1))
+laps = []
+laps.append(make_mode_laplacian(T, mode=0, k=3))
+laps.append(make_mode_laplacian(T, mode=1, k=3))
+laps.append(make_mode_laplacian(T, mode=2, k=30))
+factors = estimate_from_laps(laps, 11, mode_shapes=(0, 1, 2))
+x_hat = tl.cp_to_tensor(factors)
+
+# x_hat = np.reshape(x_hat, orig_shape)
+# T = np.reshape(T, orig_shape)
+plt.plot(normalize_tensor(x_hat[3, 5, :], "minmax"))
+plt.plot(T[3, 5, :])
+
+plt.show()
+
+
 print(T.shape)
 
-# T = T.reshape((144, -1))
-# T = T.reshape((144, T.shape[1] // (24 * 12), -1))
 
+exit()
+sumsum = lambda x: np.sum(np.sum(x, axis=0), axis=0)
 
-# def incremental_tucker(T: tl.tensor, ranks):
-#     rank_1, rank_2, rank_time = ranks
-#
-#     iSVD1 = IncrementalSVD(rank=rank_1, forgetting_factor=1)
-#     iSVD2 = IncrementalSVD(rank=rank_2, forgetting_factor=1)
-#     iSVD3 = IncrementalSVD(rank=rank_time, forgetting_factor=1)
-#
-#     print("fitting iSVD1")
-#     T_unf = tl.base.unfold(T, 0)
-#     iSVD1.fit(T_unf[:, :100])
-#     for i in range(100, T_unf.shape[1], 100):
-#         print(i)
-#         iSVD1.increment(T_unf[:, i : i + 100])
-#     U = iSVD1.U
-#     del iSVD1
-#
-#     print("fitting iSVD2")
-#     T_unf = tl.base.unfold(T, 1)
-#     iSVD2.fit(T_unf[:, :100])
-#     for i in range(100, T_unf.shape[1], 100):
-#         print(i)
-#         iSVD2.increment(T_unf[:, i : i + 100])
-#     V = iSVD2.U
-#     del iSVD2
-#
-#     print("fitting iSVD3")
-#     T_unf = tl.base.unfold(T, 2)
-#     iSVD3.fit(T_unf[:, :100])
-#     for i in range(100, T_unf.shape[1], 100):
-#         print(i)
-#         iSVD3.increment(T_unf[:, i : i + 100])
-#     W = iSVD3.U
-#     del iSVD3
-#
-#     core = tl.tenalg.multi_mode_dot(T, [U.T, V.T, W.T], modes=[0, 1, 2])
-#
-#     T_hat = tl.tenalg.multi_mode_dot(core, [U, V, W], modes=[0, 1, 2])
-#
-#     err = (T_hat - T) ** 2
-#
-#     del T_hat
-#     del T
-#     gc.collect()
-#     return err
-
-
-# factors = tl.decomposition.CP(
-#     tol=5e-5, rank=20, init="random", verbose=1
-# ).fit_transform(T)
-# T_reconstructed = tl.cp_to_tensor(factors)
-# err = (T_reconstructed - T) ** 2
-
-facotors = tl.decomposition.tucker(T, rank=[9, 9, 9], verbose=1, tol=1e-3)
-T_reconstructed = tl.tucker_to_tensor(facotors)
-err = (T_reconstructed - T) ** 2
-
-
-# err = normalize_tensor(err, method="minmax")
-# err = np.reshape(err, (12, 12, -1))
-
-# plt.plot(err[source, dest, :], label="error")
-# plt.plot(L[source, dest, :], "--", label="anomaly ins")
-# plt.xlabel("time")
-# plt.legend()
-# plt.show()
-# exit()
-
-# del T_reconstructed
-# del T
-# gc.collect()
-
-print(f"Reconstruction error: {np.linalg.norm(err)/np.linalg.norm(T)}")
-del T
-gc.collect()
-eval_tensor_model(err, L)
+weights, factors, _ = tl.decomposition.parafac2(T, rank=6, verbose=False)
+print(factors[2].shape)
+plt.plot(np.sum(factors[2], axis=1))
+plt.plot(sumsum(T))
+plt.show()

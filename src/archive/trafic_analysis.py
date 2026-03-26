@@ -10,12 +10,19 @@ data = np.load("./data/abiline_ten.npy")
 
 node = data[1, 4, :]
 
-# plot_pacf(node, lags=180)
-# plot_acf(node, lags=180)
+data = node[-4000:]
+data = np.sqrt(data)
+# data = np.diff(data, n=1)
+# plt.plot(data)
 # plt.show()
-node = node[-600:]
-print(node.shape)
+# exit()
 
-model = ARIMA(node[-600:], order=(8, 1, 8))
-model_fit = model.fit(method="")
+# plot_pacf(data, lags=12 * 24)
+# plot_acf(data, lags=12 * 24)
+# plt.show()
+# exit()
+# print(node.shape)
+
+model = ARIMA(data, order=(10, 1, 10))
+model_fit = model.fit()
 print(model_fit.summary())

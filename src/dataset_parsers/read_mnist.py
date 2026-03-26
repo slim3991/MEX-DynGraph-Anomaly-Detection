@@ -54,127 +54,116 @@ class MnistDataloader:
         return (x_train, y_train), (x_test, y_test)
 
 
-# File paths
-input_path = "raw_data/"
-training_images_filepath = join(
-    input_path, "train-images-idx3-ubyte/train-images.idx3-ubyte"
-)
-training_labels_filepath = join(
-    input_path, "train-labels-idx1-ubyte/train-labels.idx1-ubyte"
-)
-test_images_filepath = join(input_path, "t10k-images-idx3-ubyte/t10k-images.idx3-ubyte")
-test_labels_filepath = join(input_path, "t10k-labels-idx1-ubyte/t10k-labels.idx1-ubyte")
+def load_mnist(input_path="raw_data"):
+    """Load MNIST dataset from IDX files."""
 
-# Load MNIST dataset
-mnist_dataloader = MnistDataloader(
-    training_images_filepath,
-    training_labels_filepath,
-    test_images_filepath,
-    test_labels_filepath,
-)
-(x_train, y_train), (x_test, y_test) = mnist_dataloader.load_data()
+    def read_images_labels(images_filepath, labels_filepath):
+        with open(labels_filepath, "rb") as f:
+            magic, size = struct.unpack(">II", f.read(8))
+            labels = np.frombuffer(f.read(), dtype=np.uint8)
 
-# twos = x_train[y_train == 8]
-# # Transpose to (784, 5958) so each COLUMN is an image
-# twos_flat = twos.reshape(twos.shape[0], -1).T
-# twos_subset = twos_flat[:, :1000]  # Grab first 1000 samples
+        with open(images_filepath, "rb") as f:
+            magic, size, rows, cols = struct.unpack(">IIII", f.read(16))
+            images = np.frombuffer(f.read(), dtype=np.uint8)
+            images = images.reshape(size, rows, cols)
 
+        return images, labels
 
-x_train = x_train.reshape(-1, 28 * 28).T  # (784, N)
-mean_vec = np.mean(x_train, axis=1, keepdims=True)
-x_train = x_train - mean_vec
+    training_images_filepath = join(
+        input_path, "train-images-idx3-ubyte/train-images.idx3-ubyte"
+    )
+    training_labels_filepath = join(
+        input_path, "train-labels-idx1-ubyte/train-labels.idx1-ubyte"
+    )
 
+    test_images_filepath = join(
+        input_path, "t10k-images-idx3-ubyte/t10k-images.idx3-ubyte"
+    )
+    test_labels_filepath = join(
+        input_path, "t10k-labels-idx1-ubyte/t10k-labels.idx1-ubyte"
+    )
 
-x_test = x_test.reshape(-1, 28 * 28).T
-x_test = x_test - mean_vec
+    x_train, y_train = read_images_labels(
+        training_images_filepath, training_labels_filepath
+    )
+    x_test, y_test = read_images_labels(test_images_filepath, test_labels_filepath)
 
-x_train = x_train[:, :1000]
-y_train = y_train[:1000]
-
-subspaces = []
-
-for i in range(10):
-    print(f"Processing digit: {i}")
-
-    current_class = x_train[:, y_train == i]
-    other_classes = x_train[:, y_train != i]
-
-    # 1. Compute orthonormal basis for OTHER classes
-    Uo, _, _ = np.linalg.svd(other_classes, full_matrices=False)
-    Uo = Uo[:, :50]  # Keep top components (tune this)
-
-    # 2. Project current_class onto OTHER subspace
-    projection = Uo @ (Uo.T @ current_class)
-
-    # 3. Remove shared components
-    unique_features = current_class - projection
-
-    # 4. SVD on residual
-    Q_digit, _, _ = np.linalg.svd(unique_features, full_matrices=False)
-
-    # Keep first 10 unique components
-    subspaces.append(Q_digit[:, :10])
+    return (x_train, y_train), (x_test, y_test)
 
 
-def classify_sample(x, subspaces):
+def create_anomaly_tensor(
+    normal_digit=8,
+    num_images=256,
+    num_anomalies=20,
+    seed=None,
+    input_path="raw_data",
+):
     """
-    x: (784,) single flattened image
-    subspaces: list of 10 matrices, each (784, k)
+    Creates a tensor (28 x 28 x num_images) mostly containing one digit
+    with random anomaly images inserted.
     """
-    errors = []
 
-    for Q in subspaces:
-        # Project onto digit subspace
-        projection = Q @ (Q.T @ x)
+    if seed is not None:
+        np.random.seed(seed)
 
-        # Reconstruction error
-        error = np.linalg.norm(x - projection)
-        errors.append(error)
+    (x_train, y_train), _ = load_mnist(input_path)
 
-    # Pick digit with smallest reconstruction error
-    return np.argmin(errors)
+    normal_imgs = x_train[y_train == normal_digit]
+    anomaly_imgs = x_train[y_train != normal_digit]
+
+    if len(normal_imgs) < num_images:
+        raise ValueError("Not enough normal images.")
+
+    # Sample normal images
+    normal_indices = np.random.choice(len(normal_imgs), num_images, replace=False)
+    tensor = normal_imgs[normal_indices].copy()
+
+    # Choose positions for anomalies
+    anomaly_positions = np.random.choice(num_images, num_anomalies, replace=False)
+    anomaly_indices = np.random.choice(len(anomaly_imgs), num_anomalies, replace=False)
+
+    for i, pos in enumerate(anomaly_positions):
+        tensor[pos] = anomaly_imgs[anomaly_indices[i]]
+
+    # Convert to (28,28,K)
+    tensor = np.transpose(tensor, (1, 2, 0))
+
+    return tensor, anomaly_positions
 
 
-def classify_batch(X, subspaces):
+def visualize_tensor_grid(tensor, grid=(8, 8), random_select=True):
     """
-    X: (784, N)
-    Returns: predicted labels (N,)
+    Visualize slices of a tensor as a grid of images.
+
+    tensor shape: (28,28,K)
+    grid: (rows, cols)
     """
-    N = X.shape[1]
-    errors = np.zeros((10, N))
 
-    for digit, Q in enumerate(subspaces):
-        projection = Q @ (Q.T @ X)
-        errors[digit] = np.linalg.norm(X - projection, axis=0)
+    rows, cols = grid
+    total = rows * cols
+    K = tensor.shape[2]
 
-    return np.argmin(errors, axis=0), errors
+    if random_select:
+        indices = np.random.choice(K, total, replace=False)
+    else:
+        indices = np.arange(total)
+
+    fig, axes = plt.subplots(rows, cols, figsize=(8, 8))
+
+    for i, ax in enumerate(axes.flat):
+        img = tensor[:, :, indices[i]]
+        ax.imshow(img, cmap="gray")
+        ax.axis("off")
+
+    plt.tight_layout()
 
 
-preds, errors = classify_batch(x_test, subspaces)
+if __name__ == "__main__":
+    tensor, anomaly_pos = create_anomaly_tensor(
+        normal_digit=8, num_images=256, num_anomalies=100, seed=42
+    )
 
-accuracy = np.mean(preds == y_test)
-print("Overall accuracy:", accuracy)
-conf_matrix = np.zeros((10, 10), dtype=int)
+    print("Tensor shape:", tensor.shape)
+    print("Anomalies at:", anomaly_pos)
 
-for true_label, pred_label in zip(y_test, preds):
-    conf_matrix[true_label, pred_label] += 1
-precision = np.zeros(10)
-recall = np.zeros(10)
-f1 = np.zeros(10)
-
-for i in range(10):
-    TP = conf_matrix[i, i]
-    FP = conf_matrix[:, i].sum() - TP
-    FN = conf_matrix[i, :].sum() - TP
-
-    precision[i] = TP / (TP + FP + 1e-8)
-    recall[i] = TP / (TP + FN + 1e-8)
-    f1[i] = 2 * precision[i] * recall[i] / (precision[i] + recall[i] + 1e-8)
-
-    print(f"Digit {i}:")
-    print(f"  Precision: {precision[i]:.4f}")
-    print(f"  Recall:    {recall[i]:.4f}")
-    print(f"  F1 Score:  {f1[i]:.4f}")
-# plt.imshow(subspaces[5][:, 0].reshape(28, 28), cmap="gray")
-# plt.title(f"Reconstruction")
-# plt.show()
+    visualize_tensor_grid(tensor, grid=(10, 10))
