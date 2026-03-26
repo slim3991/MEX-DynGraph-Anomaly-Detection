@@ -112,29 +112,29 @@ def inject_random_shapes(
     return T, L, events_list
 
 
-def inject_random_spikes(T, n_spikes=1000):
-    nx, ny, nt = T.shape
+# def inject_random_spikes(T, n_spikes=1000):
+#     nx, ny, nt = T.shape
+#
+#     L = np.zeros_like(T)
+#     anomalies = np.zeros_like(T)
+#
+#     count = 0
+#     while count < n_spikes:
+#         source = np.random.randint(0, nx)
+#         dest = np.random.randint(0, ny)
+#         t = np.random.randint(0, nt)
+#
+#         if L[source, dest, t] == 0:
+#             tmax = np.max(T[source, dest, :])
+#             anomalies[source, dest, t] = np.random.uniform(low=tmax, high=tmax * 2)
+#             L[source, dest, t] = 1
+#             count += 1
+#
+#     T_spiked = np.maximum(T, anomalies)
+#     return T_spiked, L
 
-    L = np.zeros_like(T)
-    anomalies = np.zeros_like(T)
 
-    count = 0
-    while count < n_spikes:
-        source = np.random.randint(0, nx)
-        dest = np.random.randint(0, ny)
-        t = np.random.randint(0, nt)
-
-        if L[source, dest, t] == 0:
-            tmax = np.max(T[source, dest, :])
-            anomalies[source, dest, t] = np.random.uniform(low=tmax, high=tmax * 2)
-            L[source, dest, t] = 1
-            count += 1
-
-    T_spiked = np.maximum(T, anomalies)
-    return T_spiked, L
-
-
-def inject_random_spikes_normal(T, amplitide_factor=5, n_spikes=1000):
+def inject_random_spikes_normal(T, amplitude_factor=5, n_spikes=1000):
     nx, ny, nt = T.shape
 
     L = np.zeros_like(T)
@@ -148,7 +148,7 @@ def inject_random_spikes_normal(T, amplitide_factor=5, n_spikes=1000):
         if L[source, dest, t] == 0:
             std = np.std(T[source, dest, :])
 
-            anomalies[source, dest, t] = std * amplitide_factor
+            anomalies[source, dest, t] = std * amplitude_factor
             L[source, dest, t] = 1
             count += 1
 

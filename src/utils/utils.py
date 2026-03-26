@@ -2,6 +2,20 @@ import numpy as np
 from scipy import sparse
 
 
+def detect_anomalies_soft(res, threshold: float | None = None):
+    if threshold is None:
+        # abs_res = np.abs(res)
+        # sigma = np.median(abs_res[abs_res < np.percentile(abs_res, 50)]) / 0.6745
+        sigma = np.median(np.abs(res)) / 0.6745
+        # lam = 2.5 * sigma
+        lam = sigma * np.sqrt(2 * np.log(res.size))
+    else:
+        lam = threshold
+
+    E = np.sign(res) * np.maximum(np.abs(res) - lam, 0)
+    return E
+
+
 def global_cg_sylvester(A, B, C, max_iter=1000, tol=1e-6, verbose=False):
     A = sparse.csr_matrix(A)
     B = sparse.csc_matrix(B)

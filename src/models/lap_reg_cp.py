@@ -4,7 +4,7 @@ from scipy.sparse.linalg import eigsh
 import tensorly as tl
 from tensorly.tenalg import unfolding_dot_khatri_rao
 from utils.tensor_processing import make_mode_knn
-from utils.utils import global_cg_sylvester
+from utils.utils import detect_anomalies_soft, global_cg_sylvester
 
 
 def detect_anomalies(S, factors, epsilon):
@@ -24,21 +24,6 @@ def detect_anomalies(S, factors, epsilon):
     anomaly_indices = np.argwhere(residuals >= threshold)
 
     return E, anomaly_indices
-
-
-def detect_anomalies_soft(T, T_hat, threshold: float | None = None):
-    res = T - tl.cp_to_tensor(T_hat)
-    if threshold is None:
-        # abs_res = np.abs(res)
-        # sigma = np.median(abs_res[abs_res < np.percentile(abs_res, 50)]) / 0.6745
-        sigma = np.median(np.abs(res)) / 0.6745
-        # lam = 2.5 * sigma
-        lam = sigma * np.sqrt(2 * np.log(res.size))
-    else:
-        lam = threshold
-
-    E = np.sign(res) * np.maximum(np.abs(res) - lam, 0)
-    return E
 
 
 def graph_regularized_als(
@@ -97,14 +82,10 @@ def graph_regularized_als(
                 norm *= col_norm
             weights[r] *= norm
 
-        # Update Anomaly component
-        if n_E > 0:
-            # We create a temporary CPTensor for the anomaly detection function
-            current_cp = (weights, factors)
-            E = detect_anomalies_soft(tensor, current_cp)
-            M = tensor - E
-
-        err = np.linalg.norm(M - tl.cp_to_tensor((weights, factors)))
+        res = M - tl.cp_to_tensor((weights, factors))
+        E = detect_anomalies_soft(res)
+        M = tensor - E
+        err = np.linalg.norm(res)
         delta = np.abs(err - old_err) / (old_err + 1e-12)
 
         if verbose:

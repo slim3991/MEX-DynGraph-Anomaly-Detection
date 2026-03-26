@@ -8,6 +8,7 @@ from utils.model_eval import (
     metrics_to_latex,
 )
 from utils.tensor_processing import de_anomalize_tensor, normalize_tensor
+from utils.utils import detect_anomalies_soft
 
 
 # def detect_anomalies(S, M_hat, epsilon):
@@ -25,21 +26,7 @@ from utils.tensor_processing import de_anomalize_tensor, normalize_tensor
 #     return E, anomaly_indices
 
 
-def detect_anomalies_soft(res):
-    abs_res = np.abs(res)
-    # sigma = np.median(abs_res[abs_res < np.percentile(abs_res, 50)]) / 0.6745
-
-    sigma = np.median(np.abs(res)) / 0.6745
-    # lam = 2.5 * sigma
-    lam = sigma * np.sqrt(2 * np.log(res.size))
-
-    E = np.sign(res) * np.maximum(np.abs(res) - lam, 0)
-    return E
-
-
-def robust_cp(
-    X, rank, n_iter=50, tol=1e-6, n_anomalies=1000, verbose=False, init="svd"
-):
+def robust_cp(X, rank, n_iter=50, tol=1e-6, verbose=False, init="svd", threshold=None):
     """
     Robust CP decomposition (CP + anomaly separation)
 
@@ -88,7 +75,7 @@ def robust_cp(
         diff = abs(old_error - error)
 
         # Step 2: anomaly detection (same as your version)
-        S = detect_anomalies_soft(residuals)
+        S = detect_anomalies_soft(residuals, threshold=threshold)
 
         # Update clean tensor
         M = X - S

@@ -155,62 +155,6 @@ def main():
     # T_train = T[:, :, :5000]
     T_train = T[:, :, : 12 * 24 * 7 * 3]
     print(T_train.shape)
-    # T_test = T[:, :, 10_000:15_000]
-    del T
-    # parameter_search(T_train, events_anomalies=True, name="events_based")
-    # parameter_search(T_train, events_anomalies=False, name="spike_based")
-    # exit()
-
-    # events_rank = 18
-    # events_lambda = (6.2, 2.9, 33.4)
-    # events_k = (2, 10, 432)
-    # events_laps = (
-    #     make_mode_laplacian(T_train, mode=0, k=events_k[0], normalize=True),
-    #     make_mode_laplacian(T_train, mode=1, k=events_k[1], normalize=True),
-    #     make_mode_laplacian(T_train, mode=2, k=events_k[2], normalize=True),
-    # )
-    # events_recomp_func = partial(decomp_recomp, laps=events_laps, lambdas=events_lambda)
-    # # cp_find_best_rank(T_train, events_anomalies=True, recomp_func=events_recomp_func)
-    # # exit()
-    # evaluate(
-    #     T_train,
-    #     events_rank,
-    #     events_based=True,
-    #     test="cp train events",
-    #     recomp_func=events_recomp_func,
-    # )
-    # evaluate(
-    #     T_test,
-    #     events_rank,
-    #     events_based=True,
-    #     test="cp test events",
-    #     recomp_func=events_recomp_func,
-    # )
-
-    spike_rank = 20
-    spike_lambda = (0.2, 42, 0.6)
-    spike_k = (84, 128, 477)
-    spike_laps = (
-        make_mode_laplacian(
-            T_train, mode=0, k=spike_k[0], normalize=True, measure="angular"
-        ),
-        make_mode_laplacian(
-            T_train, mode=1, k=spike_k[1], normalize=True, measure="angular"
-        ),
-        make_mode_laplacian(
-            T_train, mode=2, k=spike_k[2], normalize=True, measure="angular"
-        ),
-    )
-    spike_recomp_func = partial(decomp_recomp, laps=spike_laps, lambdas=spike_lambda)
-    # cp_find_best_rank(T_train, events_anomalies=False, recomp_func=spike_recomp_func)
-    # exit()
-    evaluate(
-        T_train,
-        spike_rank,
-        events_based=False,
-        test="cp train spikes",
-        recomp_func=spike_recomp_func,
-    )
 
 
 if __name__ == "__main__":

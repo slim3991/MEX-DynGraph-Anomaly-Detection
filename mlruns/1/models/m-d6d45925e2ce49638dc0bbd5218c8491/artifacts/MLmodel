@@ -1,0 +1,15 @@
+artifact_path: /home/johan/nas-dev/MEX-DynGraph-Anomaly-Detection/mlruns/1/models/m-d6d45925e2ce49638dc0bbd5218c8491/artifacts
+flavors: {}
+is_signature_from_type_hint: false
+metadata:
+  mlflow.model.isExternal: true
+mlflow_version: 3.10.1
+model_id: m-d6d45925e2ce49638dc0bbd5218c8491
+model_uuid: m-d6d45925e2ce49638dc0bbd5218c8491
+prompts: null
+signature:
+  inputs: '[{"type": "boolean", "required": true}]'
+  outputs: '[{"type": "boolean", "required": true}]'
+  params: null
+type_hint_from_example: false
+utc_time_created: '2026-03-26 19:50:32.668903'
