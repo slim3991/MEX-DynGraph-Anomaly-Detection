@@ -3,7 +3,7 @@ import tensorly as tl
 from typing import List, Optional, Sequence
 from sklearn.base import BaseEstimator, TransformerMixin, check_is_fitted
 
-from models.lap_reg_cp import graph_regularized_als
+from models.implementations.lap_reg_cp import graph_regularized_als
 from utils.tensor_processing import make_mode_laplacian
 
 type Tensor = tl.tensor | npt.NDArray
@@ -30,6 +30,7 @@ class MyGRTenDecomp(BaseEstimator, TransformerMixin):
         """
         Learns the Laplacians from the training data.
         """
+        assert self.ks is not None
         if self.laps_ is None:
             self.laps_ = (
                 make_mode_laplacian(X, mode=0, k=self.ks[0], normalize=True),

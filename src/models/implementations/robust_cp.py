@@ -3,11 +3,6 @@ import numpy as np
 import tensorly as tl
 import matplotlib.pyplot as plt
 
-from utils.model_eval import (
-    compute_tensor_model_metrics,
-    metrics_to_latex,
-)
-from utils.tensor_processing import de_anomalize_tensor, normalize_tensor
 from utils.utils import detect_anomalies_soft
 
 
@@ -91,7 +86,4 @@ def robust_cp(X, rank, n_iter=50, tol=1e-6, verbose=False, init="svd", threshold
 
         old_error = error
 
-    return weights, factors, S
-
-
-##################################
+    return (weights, factors), S

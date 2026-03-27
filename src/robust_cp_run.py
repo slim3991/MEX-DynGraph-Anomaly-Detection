@@ -1,139 +1,72 @@
-from copy import deepcopy
 from dataclasses import asdict
-from functools import partial
-from typing import List
+from typing import Optional, Protocol
 import numpy as np
-import numpy.typing as npt
 import optuna
-from sklearn.metrics import auc
 import tensorly as tl
 import mlflow
 
-from models.robust_cp import robust_cp
-from utils.tensor_processing import (
-    make_mode_laplacian,
-    preprocess,
-)
+from models.RobustCp import MyRCPTenDecomp
+from utils.metrics import compute_tensor_model_metrics
+from utils.datasets import create_spike_dataset_std
 from utils.anomaly_injector import *
-from utils.model_eval import (
-    compute_tensor_model_metrics,
-    metrics_to_latex,
-)
-from models.lap_reg_cp import graph_regularized_als
 import subprocess
 
-type recomp_func = Callable[[npt.NDArray, int], npt.NDArray]
+#################### Type def ########################
+type Tensor = tl.tensor | npt.NDArray
+type objective_func = Callable[[optuna.Trial, Transformer, Tensor, Tensor], float]
 
 
+class Transformer(Protocol):
+    def fit_transform(self, X: Tensor, y: Optional[Tensor]) -> Tensor: ...
+    def residuals(self, X: Tensor, y: Optional[Tensor] = None) -> Tensor: ...
+
+
+######################################################
 def get_git_hash():
     return subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("utf-8").strip()
 
 
-def test_eval(
-    T: npt.NDArray,
-    L: npt.NDArray,
-    rank: int,
-    recomp_func: recomp_func,
-):
-    T_hat = recomp_func(T, rank)
-    err = np.abs(T - T_hat)
-    metrics = compute_tensor_model_metrics(err, L)
+def objective(trial: optuna.Trial, T, L, events=None):
+    with mlflow.start_run(nested=True):
+        trial_params = {
+            "rank": trial.suggest_int("rank", 1, 20),
+            "threshold": trial.suggest_float("threshold", 0, 2),
+        }
+        mlflow.log_params(trial_params)
 
-    return metrics
+        model = MyRCPTenDecomp(
+            rank=trial_params["rank"], threshold=trial_params["threshold"]
+        )
+        resids = model.residuals(T)
+        metrics = compute_tensor_model_metrics(resids, L)
 
-
-def decomp_recomp(T: tl.tensor, rank: int, threshold: float) -> npt.NDArray:
-    init = "svd" if rank < 12 else "random"
-    weights, factors, _ = robust_cp(
-        T,
-        rank=rank,
-        verbose=False,
-        n_iter=20,
-        init=init,
-        threshold=threshold,
-    )
-    reconst = tl.cp_to_tensor(cp_tensor=(weights, factors))
-    return reconst
-
-
-def parameter_search(T, L, params: dict, name: str | None = None):
-    T_loc = deepcopy(T)
-    del T
-
-    def objective(trial: optuna.Trial) -> float:
-        with mlflow.start_run(nested=True):
-            trial_params = {
-                "rank": trial.suggest_int("rank", 1, 20),
-                "threshold": trial.suggest_float("threshold", 0, 2),
-            }
-
-            recomp = partial(
-                decomp_recomp,
-                threshold=trial_params["threshold"],
-            )
-
-            metrics = test_eval(T_loc, L, rank=trial_params["rank"], recomp_func=recomp)
-
-            metrics_dict = {k: v for k, v in asdict(metrics).items() if v is not None}
-            mlflow.log_metrics(metrics_dict)
-            mlflow.log_params(trial_params)
-            obj = metrics.f1
-
-            assert obj is not None
-            return obj
-
-    # Main MLflow parent run
-    with mlflow.start_run(run_name=name):
-        mlflow.log_params(params=params)
-        study = optuna.create_study(direction="maximize", study_name=name)
-        study.optimize(objective, n_trials=30)
-
-        # Log best results to the parent run
-        mlflow.log_params(study.best_params)
-        mlflow.log_metric("best_f1", study.best_value)
-
-        print(f"Best Params: {study.best_params}")
-        print(f"Best F1: {study.best_value}")
-
-        return study
+        metrics_dict = {k: v for k, v in asdict(metrics).items() if v is not None}
+        mlflow.log_metrics(metrics_dict)
+        obj = metrics.f1
+        return obj if obj is not None else 0
 
 
 def main():
 
+    mlflow.set_experiment(experiment_id=1)
+    mlflow.set_active_model(name="R-CP")
+    name = "R-CP"
     seed = 42
-    np.random.seed(seed=seed)
+    np.random.seed(seed)
+    n_trials = 20
+    with mlflow.start_run(run_name=name):
+        mlflow.log_param("name", name)
+        mlflow.log_param("git_hash", get_git_hash())
+        mlflow.log_param("seed", seed)
 
-    T = np.load("data/abiline_ten.npy")
-    start = 0
-    end = 5000
-    T = T[:, :, start:end]
+        T, L, params = create_spike_dataset_std()
+        mlflow.log_params(params=params)
 
-    preprocess_rank = 20
-    keep_percentile = 95
-    alpha = 0.4
-    T = preprocess(
-        T, rank=preprocess_rank, keep_percentile=keep_percentile, alpha=alpha
-    )
-
-    n_spikes = 1000
-    anomaly_type = "spikes"
-    if anomaly_type == "spikes":
-        T, L = inject_random_spikes(T, n_spikes=n_spikes)
-    elif anomaly_type == "events":
-        raise NotImplementedError("not implemented")
-    else:
-        raise ValueError("anomaly type not supported")
-
-    name = "Robust CP"
-    params = {
-        "git hash": get_git_hash(),
-        "intervall": (start, end),
-        "anomaly type": anomaly_type,
-        "keep percentile": keep_percentile,
-        "alpha": alpha,
-        "seed": seed,
-    }
-    parameter_search(T, L, name=name, params=params)
+        study = optuna.create_study(direction="maximize", study_name="Robust-CP")
+        study.optimize(lambda trial: objective(trial, T, L, None), n_trials=n_trials)
+        mlflow.log_params(study.best_params)
+    print("Best trial: ", study.best_trial.number, ", with value: ", study.best_value)
+    print("Best Params", study.best_params, end="\n\n")
 
 
 if __name__ == "__main__":

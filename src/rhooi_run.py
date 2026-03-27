@@ -1,60 +1,82 @@
+from dataclasses import asdict
+from functools import partial
+from threading import Thread
+from typing import Optional, Protocol
 import numpy as np
-from copy import deepcopy
-import matplotlib.pyplot as plt
+import optuna
+import tensorly as tl
+import mlflow
 
-from models.decomp_model import (
-    CPTensorAnomalyDetector,
-    RCPAnomalyDetector,
-    RHOOIAnomalyDetector,
-)
+from models.RHOOI_model import MyRHOOITenDecomp
+from utils.metrics import compute_tensor_model_metrics
+from utils.datasets import create_spike_dataset_std
 from utils.anomaly_injector import *
-
-from sklearn.pipeline import FunctionTransformer, Pipeline
-
-from utils.model_eval import compute_tensor_model_metrics, print_metrics
-from utils.tensor_processing import preprocess
-
-
-def generate_datasets():
-    T = np.load("data/abiline_ten.npy")
-    X_train = deepcopy(T[:, :, :5000])
-    X_test = deepcopy(T[:, :, 10_000:15_000])
-    del T
-
-    X_train = preprocess(X_train)
-    X_test = preprocess(X_test)
-    X_train, y_train = inject_random_spikes(X_train, 500)
-    X_test, y_test = inject_random_spikes(X_test, 500)
-    y_test = np.where(y_test == 1, 1, -1)
-    y_train = np.where(y_train == 1, 1, -1)
-    return X_train, y_train, X_test, y_test
-
-
-X_train, y_train, X_test, y_test = generate_datasets()
-
-
-model = RHOOIAnomalyDetector(rank=(10, 10, 10))
-model.fit(X_train, y_train)
-
-train_probs = model.predict_proba(X_train)
-test_probs = model.predict_proba(X_test)
-# plt.plot(train_probs, label="train_proba")
-# plt.plot(y_train.flatten(), alpha=0.5, label="y_train")
-# # plt.plot(test_probs)
-# plt.legend()
-# plt.show()
-# exit()
-
-# Convert labels to (1 = anomaly, 0 = normal)
-y_test_bin = (y_test.flatten() == 1).astype(int)
-y_train_bin = (y_train.flatten() == 1).astype(int)
-
-train_metrics = compute_tensor_model_metrics(
-    probs=train_probs, y_true=y_train, threshold=model.threshold_
+from utils.metrics import (
+    compute_tensor_model_metrics,
 )
-test_metrics = compute_tensor_model_metrics(
-    probs=test_probs, y_true=y_test, threshold=model.threshold_
-)
+import subprocess
 
-print_metrics(train_metrics)
-print_metrics(test_metrics)
+#################### Type def ########################
+type Tensor = tl.tensor | npt.NDArray
+type objective_func = Callable[[optuna.Trial, Transformer, Tensor, Tensor], float]
+
+
+class Transformer(Protocol):
+    def fit_transform(self, X: Tensor, y: Optional[Tensor]) -> Tensor: ...
+    def residuals(self, X: Tensor, y: Optional[Tensor] = None) -> Tensor: ...
+
+
+######################################################
+def get_git_hash():
+    return subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("utf-8").strip()
+
+
+def objective(trial: optuna.Trial, T, L, events=None):
+    with mlflow.start_run(nested=True):
+        trial_params = {
+            "rank_0": trial.suggest_int("rank_0", 1, 20),
+            "rank_1": trial.suggest_int("rank_1", 1, 20),
+            "rank_2": trial.suggest_int("rank_2", 1, 20),
+            "threshold": trial.suggest_float("threshold", 0, 2),
+        }
+        mlflow.log_params(trial_params)
+        ranks = (
+            trial_params["rank_0"],
+            trial_params["rank_1"],
+            trial_params["rank_2"],
+        )
+
+        model = MyRHOOITenDecomp(ranks=ranks, threshold=trial_params["threshold"])
+        resids = model.residuals(T)
+        metrics = compute_tensor_model_metrics(resids, L)
+
+        metrics_dict = {k: v for k, v in asdict(metrics).items() if v is not None}
+        mlflow.log_metrics(metrics_dict)
+        obj = metrics.f1
+        return obj if obj is not None else 0
+
+
+def main():
+    mlflow.set_experiment(experiment_id=1)
+    mlflow.set_active_model(name="RHOOI")
+    name = "RHOOI"
+    seed = 42
+    np.random.seed(seed)
+    n_trials = 40
+    with mlflow.start_run(run_name=name):
+        mlflow.log_param("name", name)
+        mlflow.log_param("git_hash", get_git_hash())
+        mlflow.log_param("seed", seed)
+
+        T, L, params = create_spike_dataset_std()
+        mlflow.log_params(params=params)
+
+        study = optuna.create_study(direction="maximize", study_name="RHOOI")
+        study.optimize(lambda trial: objective(trial, T, L, None), n_trials=n_trials)
+        mlflow.log_params(study.best_params)
+    print("Best trial: ", study.best_trial.number, ", with value: ", study.best_value)
+    print("Best Params", study.best_params, end="\n\n")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,14 +1,11 @@
 from itertools import product
+from typing import Optional
 import numpy as np
 import tensorly as tl
 import matplotlib.pyplot as plt
 
-from models.lap_reg_cp import detect_anomalies_soft
-from utils.model_eval import (
-    compute_tensor_model_metrics,
-    metrics_to_latex,
-)
 from utils.tensor_processing import de_anomalize_tensor, normalize_tensor
+from utils.utils import detect_anomalies_soft
 
 
 # def detect_anomalies(S, factors, epsilon):
@@ -26,19 +23,9 @@ from utils.tensor_processing import de_anomalize_tensor, normalize_tensor
 #     return E, anomaly_indices
 
 
-def detect_anomalies_soft_tucker(res):
-    abs_res = np.abs(res)
-    # sigma = np.median(abs_res[abs_res < np.percentile(abs_res, 50)]) / 0.6745
-
-    sigma = np.median(np.abs(res)) / 0.6745
-    # lam = 2.5 * sigma
-    lam = sigma * np.sqrt(2 * np.log(res.size))
-
-    E = np.sign(res) * np.maximum(np.abs(res) - lam, 0)
-    return E
-
-
-def r_hooi(X, ranks, n_iter=50, tol=1e-6, n_anomalies: int = 1000, verbose=False):
+def r_hooi(
+    X, ranks, n_iter=50, tol=1e-6, threshold: Optional[float] = None, verbose=False
+):
     """
     HOOI decomposition
 
@@ -60,7 +47,7 @@ def r_hooi(X, ranks, n_iter=50, tol=1e-6, n_anomalies: int = 1000, verbose=False
     """
 
     # Initialize factors via HOSVD
-    x_hat = tl.decomposition.tucker(X, ranks, tol=1e-3)
+    x_hat = tl.decomposition.tucker(X, ranks, tol=1e-3, init="random")
     factors = x_hat.factors
     core = x_hat.core
 
@@ -96,7 +83,7 @@ def r_hooi(X, ranks, n_iter=50, tol=1e-6, n_anomalies: int = 1000, verbose=False
         error = np.linalg.norm(residual) / tl.norm(M)
         diff = abs(old_error - error)
 
-        S = detect_anomalies_soft_tucker(residual)
+        S = detect_anomalies_soft(residual)
 
         M = X - S
 
@@ -109,7 +96,7 @@ def r_hooi(X, ranks, n_iter=50, tol=1e-6, n_anomalies: int = 1000, verbose=False
             break
         old_error = error
 
-    return core, factors, S
+    return (core, factors), S
 
 
 ##################################

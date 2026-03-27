@@ -15,7 +15,7 @@ from utils.anomaly_injector import *
 from utils.metrics import (
     compute_tensor_model_metrics,
 )
-from sk_models.gr_cp import MyGRTenDecomp
+from models.gr_cp import MyGRTenDecomp
 import subprocess
 
 type Tensor = tl.tensor | npt.NDArray
