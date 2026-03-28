@@ -111,6 +111,7 @@ def estimate_from_laps(laps, rank, mode_shapes):
         if L is not None:
             # Get the smallest eigenvectors (bottom of the spectrum)
             # These are the smoothest signals on the graph
+            print(L.shape, rank)
             vals, vecs = eigsh(L, k=rank, which="SM")
             factors.append(vecs)
         else:

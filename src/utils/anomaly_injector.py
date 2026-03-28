@@ -66,7 +66,7 @@ def inject_random_shapes(
     T,
     start_min,
     start_max,
-    min_durantion,
+    min_duration,
     max_duration,
     amplitude_factor=5.0,
     n_shapes=1,
@@ -80,7 +80,7 @@ def inject_random_shapes(
     for _ in range(n_shapes):
         source, dest = np.random.randint(0, 11, size=2)
 
-        duration = np.random.randint(low=min_durantion, high=max_duration)
+        duration = np.random.randint(low=min_duration, high=max_duration)
         start = np.random.randint(low=start_min, high=start_max)
 
         std = np.std(T[source, dest, :])

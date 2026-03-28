@@ -1,3 +1,4 @@
+from itertools import product
 from typing import Literal
 from annoy import AnnoyIndex
 import numpy as np
@@ -66,7 +67,7 @@ def normalize_tensor(tensor, method="zscore", eps=1e-10):
         raise ValueError("Unsupported normalization method")
 
 
-def make_mode_knn(
+def make_mode_knn_annoy(
     tensor,
     mode: int,
     k: int = 10,
@@ -101,14 +102,79 @@ def make_mode_knn(
     index = AnnoyIndex(n_features, metric=distance)
     for i in range(n_samples):
         index.add_item(i, X[i])
-    index.build(n_trees)
+    index.build(500)
 
     W = lil_matrix((n_samples, n_samples))
 
     for i in range(n_samples):
-        neighbors = index.get_nns_by_item(i, k + 1)
+        neighbors = index.get_nns_by_item(i, k + 1, search_k=1200)
         neighbors = [j for j in neighbors if j != i][:k]
         W[i, neighbors] = 1
+
+    W = W.tocsr()
+
+    if not sparse:
+        return W.toarray()
+    return W
+
+
+def angle_between(v1, v2):
+    unit_v1 = v1 / np.linalg.norm(v1)
+    unit_v2 = v2 / np.linalg.norm(v2)
+    dot_product = np.dot(unit_v1, unit_v2)
+
+    return np.arccos(np.clip(dot_product, -1.0, 1.0))
+
+
+def make_mode_knn(
+    tensor,
+    mode: int,
+    k: int = 10,
+    distance: str = "euclidean",
+    sparse: bool = True,
+):
+    """
+    Build a k-NN adjacency matrix from a tensor unfolding.
+    """
+
+    # Select distance function
+    if distance == "euclidean":
+        distance_func = lambda x, y: np.linalg.norm(x - y)
+        reverse = False  # smaller = closer
+    elif distance == "dot":
+        distance_func = lambda x, y: np.dot(x, y)
+        reverse = True  # larger = closer
+    elif distance == "angular":
+        distance_func = angle_between
+        reverse = False
+    else:
+        raise ValueError("distance not provided")
+
+    # Unfold tensor
+    X = tl.base.unfold(tensor, mode=mode)
+    n_samples, n_features = X.shape
+
+    # Compute full distance/similarity matrix
+    A = np.zeros((n_samples, n_samples))
+
+    for i in range(n_samples):
+        for j in range(n_samples):
+            A[i, j] = distance_func(X[i], X[j])
+
+    # Build k-NN graph
+    W = lil_matrix((n_samples, n_samples))
+
+    for i in range(n_samples):
+        if reverse:
+            neighbors = np.argsort(-A[i])  # largest first
+        else:
+            neighbors = np.argsort(A[i])  # smallest first
+
+        neighbors = neighbors[1 : k + 1]  # skip self (index 0)
+
+        for j in neighbors:
+            W[i, j] = A[i, j]
+            W[j, i] = A[i, j]  # make symmetric
 
     W = W.tocsr()
 
@@ -146,9 +212,7 @@ def make_mode_laplacian(
         Graph Laplacian
     """
     # Build symmetric adjacency
-    W = make_mode_knn(
-        tensor, mode=mode, k=k, n_trees=n_trees, sparse=True, distance=measure
-    )
+    W = make_mode_knn_annoy(tensor, mode=mode, k=k, sparse=True, distance=measure)
     W = 0.5 * (W + W.T)
 
     deg = np.array(W.sum(axis=1)).flatten()

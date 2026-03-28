@@ -5,7 +5,7 @@ from sklearn.preprocessing import normalize
 import tensorly as tl
 import optuna
 
-from models.lap_reg_cp import graph_regularized_als, estimate_from_laps
+from models.implementations.lap_reg_cp import graph_regularized_als, estimate_from_laps
 from utils.tensor_processing import (
     de_anomalize_tensor,
     make_mode_knn,
@@ -17,7 +17,7 @@ from utils.model_eval import *
 
 
 T = np.load("data/abiline_ten.npy")
-T = T[:, :, : 12 * 24 * 7 * 4]
+T = T[:, :, :7000]
 # T = T[:, :, 10_000:15_000]
 for i, j in product(range(12), repeat=2):
     T[i, j, :] = normalize_tensor(T[i, j, :], "minmax")
@@ -38,17 +38,45 @@ laps = []
 # laps.append(make_laplacian(T, mode=2, k=300))
 
 
+def find_laps():
+    def objective(trial: optuna.Trial, T):
+        k1 = trial.suggest_int("k1", 5, 60)
+        k2 = trial.suggest_int("k2", 5, 60)
+        k3 = trial.suggest_int("k3", 5, 600)
+        rank = trial.suggest_int("rank", 3, 11)
+        l1 = trial.suggest_float("l1", -5000, 5000)
+        l2 = trial.suggest_float("l2", -5000, 5000)
+        l3 = trial.suggest_float("l3", -5000, 5000)
+
+        laps = [
+            make_mode_laplacian(T, mode=0, k=k1, measure="euclidean") * l1,
+            make_mode_laplacian(T, mode=1, k=k2, measure="euclidean") * l2,
+            make_mode_laplacian(T, mode=2, k=k3, measure="euclidean") * l3,
+        ]
+        print(laps[0].shape, laps[1].shape, laps[2].shape, rank)
+        factors = estimate_from_laps(rank=5, laps=laps, mode_shapes=(0, 1, 2))
+        x_hat = tl.cp_to_tensor(factors)
+        obj = tl.sum((x_hat - T) ** 2)
+        return obj
+
+    study = optuna.create_study(direction="minimize", study_name="GRT")
+    study.optimize(lambda trial: objective(trial, T), n_trials=20)
+    print("Best trial: ", study.best_trial.number, ", with value: ", study.best_value)
+    print("Best Params", study.best_params, end="\n\n")
+
+
 def plot_regualrizaton_tensor():
     laps = []
-    laps.append(make_mode_laplacian(T, mode=0, k=12))
-    laps.append(make_mode_laplacian(T, mode=1, k=12))
-    laps.append(make_mode_laplacian(T, mode=2, k=500))
-    factors = estimate_from_laps(rank=rank, laps=laps, mode_shapes=(0, 1, 2))
+    laps.append(make_mode_laplacian(T, mode=0, k=60, measure="euclidean") * (-4022))
+    laps.append(make_mode_laplacian(T, mode=1, k=24, measure="euclidean") * (-2052))
+    laps.append(make_mode_laplacian(T, mode=2, k=333, measure="euclidean") * (-447))
+
+    factors = estimate_from_laps(rank=11, laps=laps, mode_shapes=(0, 1, 2))
     x_hat = tl.cp_to_tensor(factors)
 
-    for i in range(12):
-        for j in range(12):
-            x_hat[i, j, :] = normalize_tensor(x_hat[i, j, :], "minmax")
+    # for i in range(12):
+    #     for j in range(12):
+    #         x_hat[i, j, :] = normalize_tensor(x_hat[i, j, :], "minmax")
 
     plt.plot(T[source, dest, :], alpha=0.5, label="Original data")
     plt.plot(x_hat[source, dest, :], label="Pure Regularizer (scaled)")
@@ -65,6 +93,9 @@ def decomp_recomp(T: tl.tensor, rank: int):
     return reconst
 
 
+# find_laps()
+plot_regualrizaton_tensor()
+exit()
 orig_shape = T.shape
 # T = np.reshape(T, (12 * 24, 7, -1))
 laps = []

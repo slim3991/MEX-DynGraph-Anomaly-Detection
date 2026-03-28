@@ -1,6 +1,6 @@
 import numpy.typing as npt
 import tensorly as tl
-from typing import Optional, Protocol
+from typing import Optional, Protocol, Sequence
 from sklearn.base import BaseEstimator, TransformerMixin
 
 from models.implementations.robust_cp import robust_cp
@@ -18,11 +18,17 @@ class Transformer(Protocol):
 class MyRCPTenDecomp(BaseEstimator, TransformerMixin):
     def __init__(
         self,
-        rank: int = 5,
-        threshold: Optional[float] = None,
+        rank: int,
+        threshold: float,
+        local_threshold: Optional[float] = None,
     ):
         self.rank = rank
         self.threshold = threshold
+        self.local_threshold = local_threshold
+
+    @property
+    def name(self):
+        return "robust CP"
 
     def fit(self, X: Tensor, y: Optional[Tensor] = None) -> Tensor:
         """
@@ -35,7 +41,7 @@ class MyRCPTenDecomp(BaseEstimator, TransformerMixin):
         Applies the decomposition using learned Laplacians.
         """
         factors, _ = robust_cp(
-            X, rank=self.rank, init="random", threshold=self.threshold
+            X, rank=self.rank, init="random", threshold=self.local_threshold
         )
         X_hat = tl.cp_to_tensor(factors)
 

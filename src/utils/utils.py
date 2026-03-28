@@ -11,7 +11,6 @@ def detect_anomalies_soft(res, threshold: float | None = None):
         lam = sigma * np.sqrt(2 * np.log(res.size))
     else:
         lam = threshold
-
     E = np.sign(res) * np.maximum(np.abs(res) - lam, 0)
     return E
 

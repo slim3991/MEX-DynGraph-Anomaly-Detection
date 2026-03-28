@@ -1,83 +1,70 @@
 from dataclasses import asdict
-from typing import Optional, Protocol
+from typing import Any, Callable, Dict, Literal, Optional, Protocol, Tuple
 import mlflow
 from tqdm import tqdm
-from copy import deepcopy
+import numpy.typing as npt
 
-from utils.anomaly_injector import inject_random_shapes, inject_random_spikes_normal
-from metrics import compute_tensor_model_metrics, print_metrics
+from utils.metrics import compute_metrics_with_threshold, print_metrics
+from utils.datasets import (
+    create_event_dataset_train,
+    create_event_dataset_test,
+    create_spike_dataset_train,
+    create_spike_dataset_test,
+)
+
+dataset_fetch_func = Callable[[], Tuple[npt.NDArray, npt.NDArray, Optional[list], dict]]
+
+
+def fetch_dataset_fetch_func(
+    anomaly_type: Literal["spikes", "events"] = "spikes",
+    train_test: Literal["train", "test"] = "test",
+) -> dataset_fetch_func:
+    if anomaly_type == "spikes":
+        return (
+            create_spike_dataset_train
+            if train_test == "train"
+            else create_spike_dataset_test
+        )
+    else:
+        return (
+            create_event_dataset_train
+            if train_test == "train"
+            else create_event_dataset_test
+        )
 
 
 class Transformer(Protocol):
     def fit_transform(self, X, y): ...
-
-
-def _create_spike_dataset(T):
-    n_spikes = 1000
-    amplitude_factor = 10
-
-    T, L = inject_random_spikes_normal(
-        T, amplitide_factor=amplitude_factor, n_spikes=n_spikes
-    )
-    mlflow.log_params({"amplitude_factor": amplitude_factor, "n_spikes": n_spikes})
-
-    return T, L
-
-
-def _create_event_dataset(T):
-    start_min = 20
-    params = {
-        "start_min": 20,
-        "start_max": 4000,
-        "min_durantion": 10,
-        "max_duration": 100,
-        "n_shapes": 20,
-        "amplitude_factor": 10,
-    }
-    T, L, events = inject_random_shapes(T, **params)
-    mlflow.log_params(params)
-    return T, L, events
+    @property
+    def name(self) -> str: ...
+    def get_params(self) -> dict: ...
 
 
 def evaluate_model(
-    T,
     model: Transformer,
-    n_runs: int,
-    log_params: Optional[dict],
-    test_events: bool = False,
+    n_runs: int = 10,
+    anomaly_type: Literal["spikes", "events"] = "spikes",
+    train_test: Literal["train", "test"] = "test",
 ):
-
     metric_sum = None
-    with mlflow.start_run(run_name=f"spike_anomalies_{model.name}"):
-        if log_params:
-            mlflow.log_params(log_params)
-        for _ in tqdm(range(n_runs)):
-            T_loc, L = _create_spike_dataset(deepcopy(T))
-            T_hat = model.fit_transform(T, None)
+    dataset_func = fetch_dataset_fetch_func(
+        anomaly_type=anomaly_type, train_test=train_test
+    )
+    for _ in tqdm(range(n_runs)):
+        T, L, events, _ = dataset_func()
+        T_hat = model.fit_transform(T, None)
 
-            resids = T_loc - T_hat
-            metrics = compute_tensor_model_metrics(resids, L)
-            metric_sum = metrics if metric_sum is None else metric_sum + metrics
-        ave_metrics = metric_sum / n_runs
-        mlflow.log_metrics(asdict(ave_metrics))
-        print_metrics(ave_metrics)
+        resids = T - T_hat
+        metrics = compute_metrics_with_threshold(
+            resids, L, threshold=model.get_params()["threshold"], events=events
+        )
+        tqdm.write(str(metrics))
+        metric_sum = metrics if metric_sum is None else metric_sum + metrics
+    ave_metrics = metric_sum / n_runs
+    print(ave_metrics)
+    ave_dict = asdict(ave_metrics)
+    ave_dict = {k: v for k, v in ave_dict.items() if v is not None}
 
-    if test_events == False:
-        return
+    mlflow.log_metrics(ave_dict)
 
-    metric_sum = None
-    with mlflow.start_run(run_name=f"ev_anomalies_{model.name}"):
-        if log_params:
-            mlflow.log_params(log_params)
-        for _ in tqdm(range(n_runs)):
-            T_loc, L, _ = _create_event_dataset(deepcopy(T))
-            T_hat = model.fit_transform(T)
-
-            resids = T_loc - T_hat
-
-            # TODO: fix better event anomaly detection
-            metrics = compute_tensor_model_metrics(resids, L)
-            metric_sum = metrics if metric_sum is None else metric_sum + metrics
-        ave_metrics = metric_sum / n_runs
-        mlflow.log_metrics(asdict(ave_metrics))
-        print_metrics(ave_metrics)
+    print_metrics(ave_metrics)

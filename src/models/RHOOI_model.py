@@ -3,7 +3,7 @@ import tensorly as tl
 from typing import Callable, List, Optional, Protocol, Sequence
 from sklearn.base import BaseEstimator, TransformerMixin, check_is_fitted
 
-from .implementations import rh
+from models.implementations.RHOOI import r_hooi
 
 
 type Tensor = tl.tensor | npt.NDArray
@@ -18,11 +18,17 @@ class Transformer(Protocol):
 class MyRHOOITenDecomp(BaseEstimator, TransformerMixin):
     def __init__(
         self,
-        ranks: Sequence[int] = (5, 5, 5),
+        ranks: Sequence[int],
+        local_threshold: float,
         threshold: Optional[float] = None,
     ):
         self.ranks = ranks
         self.threshold = threshold
+        self.local_threshold = local_threshold
+
+    @property
+    def name(self):
+        return "RHOOI"
 
     def fit(self, X: Tensor, y: Optional[Tensor] = None) -> Tensor:
         """
@@ -34,7 +40,7 @@ class MyRHOOITenDecomp(BaseEstimator, TransformerMixin):
         """
         Applies the decomposition using learned Laplacians.
         """
-        factors, _ = r_hooi(X, ranks=self.ranks, threshold=self.threshold)
+        factors, _ = r_hooi(X, ranks=self.ranks, threshold=self.local_threshold)
         X_hat = tl.tucker_to_tensor(factors)
 
         return X_hat

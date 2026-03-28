@@ -3,12 +3,9 @@ import tensorly as tl
 import matplotlib.pyplot as plt
 
 
-from hyperparam_tune import find_best_cp_rank
-from models.RHOOI import r_hooi
-from models.lap_reg_cp import graph_regularized_als
+from models import MyGRTenDecomp
 from utils.anomaly_injector import *
-from models.robust_cp import robust_cp
-from utils.model_eval import compute_tensor_model_metrics, print_metrics
+from utils.model_eval import print_metrics
 from utils.tensor_processing import make_mode_laplacian, preprocess
 
 
@@ -76,24 +73,23 @@ def detect_anomalies_soft(res):
 
 def main():
     T = np.load("data/abiline_ten.npy")
-    T_train = T[:, :, : 12 * 24 * 7 * 3]
+    T_train = T[:, :, :1000]
     print(T_train.shape)
     del T
     source, dest = np.random.randint(0, 12, 2)
-    T_train = preprocess(T_train)
-    T_train, L = inject_random_spikes(T_train)
-    # T_train = np.reshape(T_train, (12 * 12, -1))
-    # T_train = np.reshape(T_train, (12 * 24, 7, -1))
-    # L = np.reshape(L, (12 * 12, -1))
-    # L = np.reshape(L, (12 * 24, 7, -1))
-    # T_train = np.reshape(T_train, (12 * 24, 2, -1))
-    # L = np.reshape(L, (12 * 24, 2, -1))
+    T_train = preprocess(T_train, 20, alpha=0.4, keep_percentile=95)
+    T_train, L = inject_random_spikes_normal(T_train)
 
-    resids = T_train - decomp_recomp(T_train, 7)
-    E, lam = detect_anomalies_soft(resids)
-    # metrics = compute_tensor_model_metrics(E, L)
-    # print_metrics(metrics=metrics)
-    # exit()
+    x_hat = MyGRTenDecomp(
+        10, (-4558, -3787, 3476), (5, 7, 10), threshold=0.001, local_threshold=0.22
+    ).fit_transform(T_train)
+    plt.plot(T_train[source, dest, :])
+    plt.plot(x_hat[source, dest, :])
+    plt.plot(L[source, dest, :])
+    plt.show()
+    exit()
+
+    resids = x_hat.residuals(T_train)
     # E = E[E != 0]
     # print(np.size(E))
     # plt.plot(L[source, dest, :])

@@ -9,6 +9,8 @@ Provides:
 - LaTeX table generation
 """
 
+from utils.anomaly_injector import AnomalyEvent
+
 from dataclasses import dataclass
 from typing import List, Optional
 import numpy as np
@@ -42,6 +44,8 @@ class Metrics:
     fpr: float
     tpr: float
     threshold: Optional[float]
+    events_tpr: Optional[float]
+    events_score: Optional[float]
     TP: int
     FP: int
     TN: int
@@ -72,6 +76,8 @@ class Metrics:
             FP=self.FP + other.FP,
             TN=self.TN + other.TN,
             FN=self.FN + other.FN,
+            events_tpr=self._safe_add(self.events_tpr, other.events_tpr),
+            events_score=self._safe_add(self.events_tpr, other.events_tpr),
         )
 
     def __truediv__(self, n: float) -> "Metrics":
@@ -89,65 +95,61 @@ class Metrics:
             FP=self.FP / n,
             TN=self.TN / n,
             FN=self.FN / n,
+            events_tpr=self._safe_div(self.events_tpr, n),
+            events_score=self._safe_div(self.events_tpr, n),
         )
 
 
 # ============================================================
 # Compute Functions
 # ============================================================
-def compute_tensor_model_metrics(
+
+
+def compute_metrics_with_threshold(
     probs: np.ndarray,
     y_true: np.ndarray,
-    threshold: Optional[float] = None,
+    threshold: float,
+    events: Optional[List[AnomalyEvent]] = None,
 ) -> Metrics:
     """
-    Compute evaluation metrics for tensor anomaly detection.
-
-    Parameters
-    ----------
-    probs : np.ndarray
-        Flattened anomaly probabilities (higher = more anomalous)
-    y_true : np.ndarray
-        Ground truth labels (1 = anomaly, 0 = normal)
-    threshold : Optional[float]
-        Decision threshold. If None, optimal F1 threshold is computed.
-
-    Returns
-    -------
-    Metrics
+    Compute metrics based on a fixed, pre-defined threshold.
     """
+    y_pred = (probs > threshold).astype(int)
+    event_tpr = None
+    event_score = None
 
-    # Flatten inputs
+    if events is not None:
+        correct = 0
+        event_score = 0
+        event_tpr = 0
+        for source, dest, start, dur in events:
+            end = start + dur
+            event_sum = np.sum(y_pred[source, dest, start:end])
+            if event_sum > 0:
+                correct += 1
+                event_score += event_sum / dur
+        event_tpr = float(correct / len(events))
+        event_score /= float(len(events))
+
+    # Flatten and preprocess
     probs = np.array(probs).flatten()
-    y_true = np.array(y_true).flatten()
+    y_true = (np.array(y_true).flatten() > 0).astype(int)
+    y_pred = (probs > threshold).flatten().astype(int)
 
-    # Convert labels to {0,1}
-    y_true = (y_true > 0).astype(int)
-
+    # Global curve metrics (independent of threshold)
     roc_auc = roc_auc_score(y_true, probs)
-
-    precision_curve, recall_curve, pr_thresholds = precision_recall_curve(y_true, probs)
+    precision_curve, recall_curve, _ = precision_recall_curve(y_true, probs)
     pr_auc = auc(recall_curve, precision_curve)
 
-    if threshold is None:
-        f1_scores = (2 * precision_curve * recall_curve) / (
-            precision_curve + recall_curve + 1e-10
-        )
-        best_idx = np.argmax(f1_scores)
-        threshold = pr_thresholds[max(best_idx - 1, 0)]  # align sizes
-        f1_val = f1_scores[best_idx]
-    else:
-        y_pred_tmp = (probs > threshold).astype(int)
-        f1_val = f1_score(y_true, y_pred_tmp)
-
-    y_pred = (probs > threshold).astype(int)
-
+    # Confusion Matrix
     tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
 
+    # Scores
+    f1_val = f1_score(y_true, y_pred, zero_division=0)
     precision_val = precision_score(y_true, y_pred, zero_division=0)
     recall_val = recall_score(y_true, y_pred, zero_division=0)
 
-    # FPR / TPR
+    # Rates
     fpr_val = fp / (fp + tn + 1e-10)
     tpr_val = tp / (tp + fn + 1e-10)
 
@@ -165,7 +167,56 @@ def compute_tensor_model_metrics(
         FP=int(fp),
         TN=int(tn),
         FN=int(fn),
+        events_tpr=event_tpr,
+        events_score=event_score,
     )
+
+
+def compute_metrics_with_optimal_threshold(
+    probs: np.ndarray,
+    y_true: np.ndarray,
+) -> Metrics:
+    """
+    Finds the optimal threshold based on the best F1 score,
+    then computes all metrics.
+    """
+    probs = np.array(probs).flatten()
+    y_true = (np.array(y_true).flatten() > 0).astype(int)
+
+    # Calculate PR curve to find the best F1
+    precision_curve, recall_curve, pr_thresholds = precision_recall_curve(y_true, probs)
+
+    f1_scores = (2 * precision_curve * recall_curve) / (
+        precision_curve + recall_curve + 1e-10
+    )
+
+    # Identify the index of the highest F1
+    best_idx = np.argmax(f1_scores)
+
+    # Precision-Recall thresholds have length len(precision)-1
+    # We use max/min to ensure we stay within bounds
+    optimal_threshold = pr_thresholds[min(best_idx, len(pr_thresholds) - 1)]
+
+    # Reuse the logic from the fixed threshold function
+    return compute_metrics_with_threshold(probs, y_true, threshold=optimal_threshold)
+
+
+# ============================================================
+# Legacy Wrapper (Optional)
+# ============================================================
+
+
+# def compute_tensor_model_metrics(
+#     probs: np.ndarray,
+#     y_true: np.ndarray,
+#     threshold: Optional[float] = None,
+# ) -> Metrics:
+#     """
+#     Main entry point maintained for backward compatibility.
+#     """
+#     if threshold is None:
+#         return compute_metrics_with_optimal_threshold(probs, y_true)
+#     return compute_metrics_with_threshold(probs, y_true, threshold)
 
 
 # ============================================================
@@ -174,6 +225,8 @@ def compute_tensor_model_metrics(
 
 
 def print_metrics(metrics: Metrics) -> None:
+
+
     """
     Pretty console output of metrics.
     """
@@ -200,6 +253,9 @@ def print_metrics(metrics: Metrics) -> None:
     print("\nConfusion Matrix:")
     print(f"TP: {metrics.TP}, FP: {metrics.FP}")
     print(f"FN: {metrics.FN}, TN: {metrics.TN}")
+    print(
+        f"Events score: {metrics.events_score:.2%}, events TPR: {metrics.events_tpr:.2%}"
+    )
 
 
 # ============================================================
