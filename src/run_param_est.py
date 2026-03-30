@@ -109,7 +109,7 @@ def run_tensor_experiment(
             }
         )
 
-        study = optuna.create_study(direction="maximize")
+        study = optuna.create_study(direction="maximize", study_name=model_name)
         study.optimize(objective, n_trials=n_trials)
 
         mlflow.log_params(study.best_params)
@@ -248,21 +248,21 @@ def main():
 
     run_tensor_experiment(
         experiment_name="Tensor_Decomp",
-        model_name="GRTen",
+        model_name="Basic Tucker",
         suggest_and_build_model=tucker_builder,
         anomaly_type="spike",
         tag=tag,
     )
     run_tensor_experiment(
         experiment_name="Tensor_Decomp",
-        model_name="GRTen",
+        model_name="Robust CP",
         suggest_and_build_model=robust_cp_builder,
         anomaly_type="spike",
         tag=tag,
     )
     run_tensor_experiment(
         experiment_name="Tensor_Decomp",
-        model_name="GRTen",
+        model_name="RHOOI",
         suggest_and_build_model=rhooi_builder,
         anomaly_type="spike",
         tag=tag,
