@@ -12,18 +12,18 @@ import secrets
 
 def main():
     models = [
-        MyCPTenDecomp(rank=20, threshold=0.17),
-        MyTuckerTenDecomp(ranks=(11, 10, 10), threshold=0.26),
-        MyRCPTenDecomp(rank=20, local_threshold=0.88, threshold=0.19),
-        MyRHOOITenDecomp(ranks=(11, 11, 15), threshold=0.3, local_threshold=1.9),
+        MyCPTenDecomp(rank=17, threshold=0.21),
+        MyTuckerTenDecomp(ranks=(5, 11, 9), threshold=0.34),
+        MyRCPTenDecomp(rank=20, local_threshold=0.74, threshold=0.16),
+        MyRHOOITenDecomp(ranks=(5, 12, 13), threshold=0.35, local_threshold=0.39),
         MyGRTenDecomp(
             rank=17,
-            lambdas=(0.03, 0.02, 24),
-            ks=(4, 5, 8),
+            lambdas=(38, 0.5, 0.08),
+            ks=(8, 7, 5),
             laps=None,
-            threshold=0.002,
+            threshold=0.2,
             measure="dot",
-            local_threshold=0.03,
+            local_threshold=1.01,
         ),
     ]
     tag = secrets.token_hex(4)

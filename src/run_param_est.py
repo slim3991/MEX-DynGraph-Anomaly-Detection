@@ -82,7 +82,7 @@ def run_tensor_experiment(
     T, L, events, data_params = data_fetch_func()
 
     def objective(trial):
-        with mlflow.start_run(nested=True):
+        with mlflow.start_run(nested=True, tags={"run_tag": tag}):
             model, trial_params = suggest_and_build_model(trial, T)
 
             trial_params["anomaly_type"] = anomaly_type
@@ -95,16 +95,15 @@ def run_tensor_experiment(
 
             metrics_dict = {k: v for k, v in asdict(metrics).items() if v is not None}
             mlflow.log_metrics(metrics_dict)
-            return metrics.f1 if metrics.f1 is not None else 0
+            return metrics.pr_auc if metrics.pr_auc is not None else 0
 
-    with mlflow.start_run(run_name=model_name):
+    with mlflow.start_run(run_name=model_name, tags={"run_tag": tag}):
         mlflow.log_params(
             {
                 "model_name": model_name,
                 "git_hash": get_git_hash(),
                 "seed": seed,
                 "anomaly_type": anomaly_type,
-                "tag": tag,
                 **data_params,
             }
         )
@@ -134,7 +133,7 @@ def grten_builder(trial, T):
         "k1": trial.suggest_int("k1", 1, min(T.shape[0], 500)),
         "k2": trial.suggest_int("k2", 1, min(T.shape[0], 500)),
         "k3": trial.suggest_int("k3", 1, min(T.shape[0], 500)),
-        "threshold": trial.suggest_float("threshold", 0, 1),
+        # "threshold": trial.suggest_float("threshold", 0, 1),
         "local_threshold": trial.suggest_float("local_threshold", 0, 2),
     }
 
@@ -193,7 +192,7 @@ def tucker_builder(trial, T):
         "rank_0": trial.suggest_int("rank_0", 1, min(20, n1)),
         "rank_1": trial.suggest_int("rank_1", 1, min(20, n2)),
         "rank_2": trial.suggest_int("rank_2", 1, min(20, n3)),
-        "threshold": trial.suggest_float("threshold", 0, 1),
+        # "threshold": trial.suggest_float("threshold", 0, 1),
     }
     ranks = (params["rank_0"], params["rank_1"], params["rank_2"])
     model = MyTuckerTenDecomp(ranks=ranks, threshold=params["threshold"])
@@ -207,7 +206,7 @@ def rhooi_builder(trial, T):
         "rank_1": trial.suggest_int("rank_1", 1, min(20, n2)),
         "rank_2": trial.suggest_int("rank_2", 1, min(20, n3)),
         "local_threshold": trial.suggest_float("local_threshold", 0, 3),
-        "threshold": trial.suggest_float("threshold", 0, 1),
+        # "threshold": trial.suggest_float("threshold", 0, 1),
     }
 
     ranks = (params["rank_0"], params["rank_1"], params["rank_2"])
@@ -222,7 +221,7 @@ def rhooi_builder(trial, T):
 def robust_cp_builder(trial, T):
     params = {
         "rank": trial.suggest_int("rank", 1, 20),
-        "threshold": trial.suggest_float("threshold", 0, 1),
+        # "threshold": trial.suggest_float("threshold", 0, 1),
         "local_threshold": trial.suggest_float("local_threshold", 0, 2),
     }
 
