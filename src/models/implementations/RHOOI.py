@@ -78,7 +78,7 @@ def r_hooi(
 
         # reconstruction
         X_hat = tl.tenalg.multi_mode_dot(core, factors)
-        residual = M - X_hat
+        residual = X - X_hat
 
         error = np.linalg.norm(residual) / tl.norm(M)
         diff = abs(old_error - error)

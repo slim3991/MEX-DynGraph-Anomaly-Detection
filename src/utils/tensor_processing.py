@@ -96,7 +96,10 @@ def make_mode_knn_annoy(
         k-NN adjacency matrix
     """
     X = tl.base.unfold(tensor, mode=mode)
+
     n_samples, n_features = X.shape
+    # print("n_samples: ", n_samples, "n_features: ", n_features)
+
     # print(n_samples, n_features)
 
     index = AnnoyIndex(n_features, metric=distance)

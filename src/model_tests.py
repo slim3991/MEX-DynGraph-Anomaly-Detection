@@ -12,10 +12,10 @@ import secrets
 
 def main():
     models = [
-        # MyCPTenDecomp(rank=20, threshold=0.17),
-        # MyTuckerTenDecomp(ranks=(11, 10, 10), threshold=0.26),
-        # MyRCPTenDecomp(rank=20, local_threshold=0.88, threshold=0.19),
-        # MyRHOOITenDecomp(ranks=(11, 11, 15), threshold=0.3, local_threshold=1.9),
+        MyCPTenDecomp(rank=20, threshold=0.17),
+        MyTuckerTenDecomp(ranks=(11, 10, 10), threshold=0.26),
+        MyRCPTenDecomp(rank=20, local_threshold=0.88, threshold=0.19),
+        MyRHOOITenDecomp(ranks=(11, 11, 15), threshold=0.3, local_threshold=1.9),
         MyGRTenDecomp(
             rank=17,
             lambdas=(0.03, 0.02, 24),
@@ -28,8 +28,8 @@ def main():
     ]
     tag = secrets.token_hex(4)
     tag = {"eval_run": tag}
-    anomaly_type = "events"
-    train_test = "eval"
+    anomaly_type = "train"
+    train_test = "spikes"
 
     mlflow.set_experiment(f"Evaluate Models (w. events)")
 
