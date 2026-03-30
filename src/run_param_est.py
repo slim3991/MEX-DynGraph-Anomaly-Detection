@@ -95,7 +95,7 @@ def run_tensor_experiment(
 
             metrics_dict = {k: v for k, v in asdict(metrics).items() if v is not None}
             mlflow.log_metrics(metrics_dict)
-            return metrics.pr_auc if metrics.pr_auc is not None else 0
+            return metrics.f1 if metrics.f1 is not None else 0
 
     with mlflow.start_run(run_name=model_name):
         mlflow.log_params(
