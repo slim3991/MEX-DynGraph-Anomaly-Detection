@@ -52,13 +52,13 @@ def evaluate_model(
     )
     for _ in tqdm(range(n_runs)):
         T, L, events, _ = dataset_func()
-        T_hat = model.fit_transform(T, None)
+        T_hat = model.fit_transform(T, L)
 
         resids = T - T_hat
         metrics = compute_metrics_with_threshold(
-            resids, L, threshold=model.get_params()["threshold"], events=events
+            resids, L, threshold=None, events=events
         )
-        tqdm.write(str("PR_AUC: " + metrics.pr_auc))
+        tqdm.write("PR_AUC: " + str(metrics.pr_auc))
         metric_sum = metrics if metric_sum is None else metric_sum + metrics
     ave_metrics = metric_sum / n_runs
     print(print_metrics(ave_metrics))

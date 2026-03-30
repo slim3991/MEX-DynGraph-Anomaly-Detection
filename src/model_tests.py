@@ -12,18 +12,17 @@ import secrets
 
 def main():
     models = [
-        MyCPTenDecomp(rank=17, threshold=0.21),
-        MyTuckerTenDecomp(ranks=(5, 11, 9), threshold=0.34),
-        MyRCPTenDecomp(rank=20, local_threshold=0.74, threshold=0.16),
-        MyRHOOITenDecomp(ranks=(5, 12, 13), threshold=0.35, local_threshold=0.39),
+        MyCPTenDecomp(rank=17),
+        MyTuckerTenDecomp(ranks=(9, 11, 8)),
+        MyRCPTenDecomp(rank=17, local_threshold=0.74),
+        MyRHOOITenDecomp(ranks=(9, 12, 9), local_threshold=0.21),
         MyGRTenDecomp(
             rank=17,
-            lambdas=(38, 0.5, 0.08),
-            ks=(8, 7, 5),
+            lambdas=(0.9, 0.04, 2),
+            ks=(12, 1, 11),
             laps=None,
-            threshold=0.2,
-            measure="dot",
-            local_threshold=1.01,
+            measure="angular",
+            local_threshold=0.5,
         ),
     ]
     tag = secrets.token_hex(4)
@@ -31,7 +30,7 @@ def main():
     anomaly_type = "train"
     train_test = "spikes"
 
-    mlflow.set_experiment(f"Evaluate Models (w. events)")
+    mlflow.set_experiment(f"Evaluate Models")
 
     with mlflow.start_run(run_name=f"model evals, {tag['eval_run']}", tags=tag):
         for model in models:

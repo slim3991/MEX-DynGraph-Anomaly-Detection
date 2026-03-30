@@ -71,7 +71,7 @@ class Metrics:
             f1=self._safe_add(self.f1, other.f1),
             fpr=self.fpr + other.fpr,
             tpr=self.tpr + other.tpr,
-            threshold=self._safe_add(self.threshold, other.threshold),
+            threshold=self.threshold,
             TP=self.TP + other.TP,
             FP=self.FP + other.FP,
             TN=self.TN + other.TN,
@@ -90,7 +90,7 @@ class Metrics:
             f1=self._safe_div(self.f1, n),
             fpr=self.fpr / n,
             tpr=self.tpr / n,
-            threshold=self._safe_div(self.threshold, n),
+            threshold=self.threshold,
             TP=self.TP / n,
             FP=self.FP / n,
             TN=self.TN / n,
@@ -108,12 +108,14 @@ class Metrics:
 def compute_metrics_with_threshold(
     probs: np.ndarray,
     y_true: np.ndarray,
-    threshold: float,
+    threshold: Optional[float],
     events: Optional[List[AnomalyEvent]] = None,
 ) -> Metrics:
     """
     Compute metrics based on a fixed, pre-defined threshold.
     """
+    if threshold is None:
+        threshold = np.percentile(probs, 90)
     y_pred = (probs > threshold).astype(int)
     event_tpr = None
     event_score = None
@@ -225,8 +227,6 @@ def compute_metrics_with_optimal_threshold(
 
 
 def print_metrics(metrics: Metrics) -> None:
-
-
     """
     Pretty console output of metrics.
     """
