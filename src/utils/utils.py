@@ -1,5 +1,33 @@
+from typing import Tuple
 import numpy as np
 from scipy import sparse
+from sklearn.metrics import precision_recall_curve
+
+from utils.metrics import Metrics
+
+
+def optimal_f1_threshold(
+    probs: np.ndarray,
+    y_true: np.ndarray,
+) -> Tuple[float, float]:
+    """
+    Finds the optimal threshold based on the best F1 score,
+    then computes all metrics.
+    """
+    probs = np.array(probs).flatten()
+    y_true = (np.array(y_true).flatten() > 0).astype(int)
+
+    precision_curve, recall_curve, pr_thresholds = precision_recall_curve(y_true, probs)
+
+    f1_scores = (2 * precision_curve * recall_curve) / (
+        precision_curve + recall_curve + 1e-10
+    )
+
+    best_idx = np.argmax(f1_scores)
+
+    optimal_threshold = pr_thresholds[min(best_idx, len(pr_thresholds) - 1)]
+
+    return optimal_threshold, f1_scores[best_idx]
 
 
 def detect_anomalies_soft(res, threshold: float | None = None):

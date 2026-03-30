@@ -4,6 +4,7 @@ from typing import Optional, Protocol, Sequence
 from sklearn.base import BaseEstimator, TransformerMixin
 
 from models.implementations.robust_cp import robust_cp
+from utils.utils import optimal_f1_threshold
 
 
 type Tensor = tl.tensor | npt.NDArray
@@ -18,39 +19,48 @@ class Transformer(Protocol):
 class MyRCPTenDecomp(BaseEstimator, TransformerMixin):
     def __init__(
         self,
-        rank: int,
-        threshold: float,
+        rank: int = 5,
         local_threshold: Optional[float] = None,
     ):
         self.rank = rank
-        self.threshold = threshold
         self.local_threshold = local_threshold
+
+        # Initializing learned parameters to None
+        self.threshold_ = None
+        self.X_hat_ = None
+        self.factors_ = None
 
     @property
     def name(self):
         return "robust CP"
 
-    def fit(self, X: Tensor, y: Optional[Tensor] = None) -> Tensor:
+    def fit(self, X: Tensor, y: Optional[Tensor] = None):
         """
-        Learns the Laplacians from the training data.
-        """
-        return self
-
-    def transform(self, X: Tensor) -> Tensor:
-        """
-        Applies the decomposition using learned Laplacians.
+        Fits the Robust CP decomposition and learns the classification threshold.
         """
         factors, _ = robust_cp(
             X, rank=self.rank, init="random", threshold=self.local_threshold
         )
-        X_hat = tl.cp_to_tensor(factors)
 
-        return X_hat
+        self.factors_ = factors
+        self.X_hat_ = tl.cp_to_tensor(self.factors_)
+
+        if y is not None:
+            # Storing result in self.threshold_
+            self.threshold_, _ = optimal_f1_threshold(self.X_hat_, y)
+
+        return self
+
+    def transform(self, X: Tensor) -> Tensor:
+        """
+        Returns the low-rank reconstruction learned during fit.
+        """
+        check_is_fitted(self, ["X_hat_"])
+        return self.X_hat_
 
     def residuals(self, X: Tensor, y: Optional[Tensor] = None) -> Tensor:
-
-        # Get the reconstruction using your existing transform logic
-        X_hat = self.fit_transform(X)
-
-        # Return the residual tensor (E = X - X_hat)
+        """
+        Returns the residual tensor (E = X - X_hat)
+        """
+        X_hat = self.transform(X)
         return X - X_hat

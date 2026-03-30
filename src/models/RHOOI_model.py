@@ -4,6 +4,7 @@ from typing import Callable, List, Optional, Protocol, Sequence
 from sklearn.base import BaseEstimator, TransformerMixin, check_is_fitted
 
 from models.implementations.RHOOI import r_hooi
+from utils.utils import optimal_f1_threshold
 
 
 type Tensor = tl.tensor | npt.NDArray
@@ -19,36 +20,35 @@ class MyRHOOITenDecomp(BaseEstimator, TransformerMixin):
     def __init__(
         self,
         ranks: Sequence[int],
-        local_threshold: float,
-        threshold: Optional[float] = None,
+        local_threshold: float = 1e-6,
     ):
         self.ranks = ranks
-        self.threshold = threshold
         self.local_threshold = local_threshold
+
+        # Learned attributes
+        self.threshold_ = None
+        self.factors_ = None
 
     @property
     def name(self):
         return "RHOOI"
 
-    def fit(self, X: Tensor, y: Optional[Tensor] = None) -> Tensor:
-        """
-        Learns the Laplacians from the training data.
-        """
+    def fit(self, X: Tensor, y: Tensor):
+        factors, _ = r_hooi(X, ranks=self.ranks, threshold=self.local_threshold)
+        self.factors_ = factors
+
+        X_hat = tl.tucker_to_tensor(self.factors_)
+
+        if y is not None:
+            self.threshold_, _ = optimal_f1_threshold(X_hat, y)
+
         return self
 
     def transform(self, X: Tensor) -> Tensor:
-        """
-        Applies the decomposition using learned Laplacians.
-        """
-        factors, _ = r_hooi(X, ranks=self.ranks, threshold=self.local_threshold)
-        X_hat = tl.tucker_to_tensor(factors)
-
-        return X_hat
+        check_is_fitted(self, ["factors_"])
+        # Returning the reconstruction
+        return tl.tucker_to_tensor(self.factors_)
 
     def residuals(self, X: Tensor, y: Optional[Tensor] = None) -> Tensor:
-
-        # Get the reconstruction using your existing transform logic
-        X_hat = self.fit_transform(X)
-
-        # Return the residual tensor (E = X - X_hat)
+        X_hat = self.transform(X)
         return X - X_hat

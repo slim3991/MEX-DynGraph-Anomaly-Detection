@@ -87,10 +87,10 @@ def run_tensor_experiment(
 
             trial_params["anomaly_type"] = anomaly_type
             mlflow.log_params(trial_params)
-
+            model.fit(T, L)
             resids = model.residuals(T)
             metrics = compute_metrics_with_threshold(
-                resids, L, model.get_params()["threshold"], events=events
+                resids, L, model.threshold_, events=events
             )
 
             metrics_dict = {k: v for k, v in asdict(metrics).items() if v is not None}
@@ -180,9 +180,8 @@ def grten_builder(trial, T):
 def cp_builder(trial, T):
     params = {
         "rank": trial.suggest_int("rank", 1, 20),
-        "threshold": trial.suggest_float("threshold", 0, 1),
     }
-    model = MyCPTenDecomp(rank=params["rank"], threshold=params["threshold"])
+    model = MyCPTenDecomp(rank=params["rank"])
     return model, params
 
 
@@ -192,10 +191,9 @@ def tucker_builder(trial, T):
         "rank_0": trial.suggest_int("rank_0", 1, min(20, n1)),
         "rank_1": trial.suggest_int("rank_1", 1, min(20, n2)),
         "rank_2": trial.suggest_int("rank_2", 1, min(20, n3)),
-        # "threshold": trial.suggest_float("threshold", 0, 1),
     }
     ranks = (params["rank_0"], params["rank_1"], params["rank_2"])
-    model = MyTuckerTenDecomp(ranks=ranks, threshold=params["threshold"])
+    model = MyTuckerTenDecomp(ranks=ranks)
     return model, params
 
 
@@ -206,14 +204,12 @@ def rhooi_builder(trial, T):
         "rank_1": trial.suggest_int("rank_1", 1, min(20, n2)),
         "rank_2": trial.suggest_int("rank_2", 1, min(20, n3)),
         "local_threshold": trial.suggest_float("local_threshold", 0, 3),
-        # "threshold": trial.suggest_float("threshold", 0, 1),
     }
 
     ranks = (params["rank_0"], params["rank_1"], params["rank_2"])
     model = MyRHOOITenDecomp(
         ranks=ranks,
         local_threshold=params["local_threshold"],
-        threshold=params["threshold"],
     )
     return model, params
 
@@ -221,13 +217,11 @@ def rhooi_builder(trial, T):
 def robust_cp_builder(trial, T):
     params = {
         "rank": trial.suggest_int("rank", 1, 20),
-        # "threshold": trial.suggest_float("threshold", 0, 1),
         "local_threshold": trial.suggest_float("local_threshold", 0, 2),
     }
 
     model = MyRCPTenDecomp(
         rank=params["rank"],
-        threshold=params["threshold"],
         local_threshold=params["local_threshold"],
     )
 

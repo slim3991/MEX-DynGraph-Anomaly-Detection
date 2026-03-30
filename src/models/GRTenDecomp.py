@@ -5,6 +5,7 @@ from sklearn.base import BaseEstimator, TransformerMixin, check_is_fitted
 
 from models.implementations.lap_reg_cp import graph_regularized_als
 from utils.tensor_processing import make_mode_laplacian
+from utils.utils import optimal_f1_threshold
 
 type Tensor = tl.tensor | npt.NDArray
 
@@ -12,66 +13,63 @@ type Tensor = tl.tensor | npt.NDArray
 class MyGRTenDecomp(BaseEstimator, TransformerMixin):
     def __init__(
         self,
-        rank: int,
-        lambdas: Sequence[float],
-        ks: Optional[Sequence[int]],
-        threshold: float,
+        rank: int = 5,
+        lambdas: Sequence[float] = (0.1, 0.1, 0.1),
+        ks: Optional[Sequence[int]] = (5, 5, 5),
         local_threshold: Optional[float] = None,
         laps: Optional[List] = None,
         measure: Literal[
             "angular", "euclidean", "manhattan", "hamming", "dot"
         ] = "euclidean",
     ):
-        if (ks is None) == (laps is None):
-            raise ValueError("One and only one of ks or laps must be set")
-        self.laps = laps
         self.rank = rank
         self.lambdas = lambdas
         self.ks = ks
-        self.threshold = threshold
         self.local_threshold = local_threshold
+        self.laps = laps
         self.measure = measure
+
+        # Learned attributes
+        self.threshold_ = None
+        self.X_hat_ = None
+        self.laps_ = None
+        self.E_ = None
 
     @property
     def name(self):
         return "GRT"
 
-    def fit(self, X: Tensor, y: Optional[Tensor] = None) -> Tensor:
-        """
-        Learns the Laplacians from the training data.
-        """
-        assert self.ks is not None
-        if self.laps is None:
-            self.laps = (
+    def fit(self, X: Tensor, y: Optional[Tensor] = None):
+        if (self.ks is None) and (self.laps is None):
+            raise ValueError("One of 'ks' or 'laps' must be provided.")
+
+        if self.laps is not None:
+            self.laps_ = self.laps
+        else:
+            # Dynamically generate Laplacians for each mode
+            self.laps_ = [
                 make_mode_laplacian(
-                    X, mode=0, k=self.ks[0], normalize=True, measure=self.measure
-                ),
-                make_mode_laplacian(
-                    X, mode=1, k=self.ks[1], normalize=True, measure=self.measure
-                ),
-                make_mode_laplacian(
-                    X, mode=2, k=self.ks[2], normalize=True, measure=self.measure
-                ),
-            )
+                    X, mode=i, k=self.ks[i], normalize=True, measure=self.measure
+                )
+                for i in range(X.ndim)
+            ]
+
+        factors, self.E_ = graph_regularized_als(
+            X, self.rank, self.laps_, lmbda=self.lambdas, threshold=self.local_threshold
+        )
+
+        self.X_hat_ = tl.cp_to_tensor(factors)
+
+        # 4. Global thresholding
+        if y is not None:
+            self.threshold_, _ = optimal_f1_threshold(self.X_hat_, y)
 
         return self
 
     def transform(self, X: Tensor) -> Tensor:
-        """
-        Applies the decomposition using learned Laplacians.
-        """
+        check_is_fitted(self, ["X_hat_"])
+        return self.X_hat_
 
-        factors, self.E = graph_regularized_als(
-            X, self.rank, self.laps, lmbda=self.lambdas, threshold=self.local_threshold
-        )
-        X_hat = tl.cp_to_tensor(factors)
-
-        return X_hat
-
-    def residuals(self, X: Tensor, y: Optional[Tensor] = None) -> Tensor:
-
-        # Get the reconstruction using your existing transform logic
+    def residuals(self, X: Tensor) -> Tensor:
         X_hat = self.transform(X)
-
-        # Return the residual tensor (E = X - X_hat)
         return X - X_hat

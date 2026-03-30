@@ -1,7 +1,9 @@
 import numpy.typing as npt
 import tensorly as tl
 from typing import Optional, Protocol, Sequence
-from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.base import BaseEstimator, TransformerMixin, check_is_fitted
+
+from utils.utils import optimal_f1_threshold
 
 
 type Tensor = tl.tensor | npt.NDArray
@@ -15,35 +17,36 @@ class Transformer(Protocol):
 class MyTuckerTenDecomp(BaseEstimator, TransformerMixin):
     def __init__(
         self,
-        threshold: float,
         ranks: Sequence[int] = (5, 5, 5),
     ):
         self.ranks = ranks
-        self.threshold = threshold
+        self.threshold_ = None
+        self.tucker_parts_ = None
 
     @property
     def name(self):
         return "basic_tucker"
 
-    def fit(self, X: Tensor, y: Optional[Tensor] = None) -> Tensor:
-        """
-        Learns the Laplacians from the training data.
-        """
+    def fit(self, X: Tensor, y: Tensor):
+        self.tucker_parts_ = tl.decomposition.tucker(X, rank=self.ranks, init="random")
+
+        X_hat = tl.tucker_to_tensor(self.tucker_parts_)
+
+        if y is not None:
+            self.threshold_, _ = optimal_f1_threshold(X_hat, y)
         return self
 
     def transform(self, X: Tensor) -> Tensor:
         """
-        Applies the decomposition using learned Laplacians.
+        Returns the reconstructed tensor based on the learned Tucker components.
         """
-        factors = tl.decomposition.tucker(X, rank=self.ranks, init="random")
-        X_hat = tl.tucker_to_tensor(factors)
+        check_is_fitted(self, ["tucker_parts_"])
 
-        return X_hat
+        return tl.tucker_to_tensor(self.tucker_parts_)
 
     def residuals(self, X: Tensor, y: Optional[Tensor] = None) -> Tensor:
-
-        # Get the reconstruction using your existing transform logic
-        X_hat = self.fit_transform(X)
-
-        # Return the residual tensor (E = X - X_hat)
+        """
+        Returns the error tensor (E = X - X_hat)
+        """
+        X_hat = self.transform(X)
         return X - X_hat
