@@ -58,10 +58,10 @@ def evaluate_model(
         metrics = compute_metrics_with_threshold(
             resids, L, threshold=model.get_params()["threshold"], events=events
         )
-        tqdm.write(str(metrics))
+        tqdm.write(str("PR_AUC: " + metrics.pr_auc))
         metric_sum = metrics if metric_sum is None else metric_sum + metrics
     ave_metrics = metric_sum / n_runs
-    print(ave_metrics)
+    print(print_metrics(ave_metrics))
     ave_dict = asdict(ave_metrics)
     ave_dict = {k: v for k, v in ave_dict.items() if v is not None}
 

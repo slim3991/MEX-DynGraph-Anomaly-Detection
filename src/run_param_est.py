@@ -133,7 +133,6 @@ def grten_builder(trial, T):
         "k1": trial.suggest_int("k1", 1, min(T.shape[0], 500)),
         "k2": trial.suggest_int("k2", 1, min(T.shape[0], 500)),
         "k3": trial.suggest_int("k3", 1, min(T.shape[0], 500)),
-        # "threshold": trial.suggest_float("threshold", 0, 1),
         "local_threshold": trial.suggest_float("local_threshold", 0, 2),
     }
 
@@ -170,7 +169,6 @@ def grten_builder(trial, T):
         rank=trial_params["rank"],
         lambdas=lambdas,
         ks=None,
-        threshold=trial_params["threshold"],
         local_threshold=trial_params["local_threshold"],
         laps=laps,
     )
@@ -231,35 +229,35 @@ def robust_cp_builder(trial, T):
 def main():
     tag = secrets.token_hex(4)
 
-    run_tensor_experiment(
-        experiment_name="Tensor_Decomp",
-        model_name="BasicCP",
-        suggest_and_build_model=cp_builder,
-        anomaly_type="events",
-        tag=tag,
-    )
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="BasicCP",
+    #     suggest_and_build_model=cp_builder,
+    #     anomaly_type="events",
+    #     tag=tag,
+    # )
 
-    run_tensor_experiment(
-        experiment_name="Tensor_Decomp",
-        model_name="Basic Tucker",
-        suggest_and_build_model=tucker_builder,
-        anomaly_type="spike",
-        tag=tag,
-    )
-    run_tensor_experiment(
-        experiment_name="Tensor_Decomp",
-        model_name="Robust CP",
-        suggest_and_build_model=robust_cp_builder,
-        anomaly_type="spike",
-        tag=tag,
-    )
-    run_tensor_experiment(
-        experiment_name="Tensor_Decomp",
-        model_name="RHOOI",
-        suggest_and_build_model=rhooi_builder,
-        anomaly_type="spike",
-        tag=tag,
-    )
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="Basic Tucker",
+    #     suggest_and_build_model=tucker_builder,
+    #     anomaly_type="spike",
+    #     tag=tag,
+    # )
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="Robust CP",
+    #     suggest_and_build_model=robust_cp_builder,
+    #     anomaly_type="spike",
+    #     tag=tag,
+    # )
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="RHOOI",
+    #     suggest_and_build_model=rhooi_builder,
+    #     anomaly_type="spike",
+    #     tag=tag,
+    # )
     run_tensor_experiment(
         experiment_name="Tensor_Decomp",
         model_name="GRTen",
