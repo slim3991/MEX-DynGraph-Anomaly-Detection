@@ -1,7 +1,7 @@
 import numpy.typing as npt
 import tensorly as tl
 from typing import Optional, Protocol, Sequence
-from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.base import BaseEstimator, TransformerMixin, check_is_fitted
 
 from models.implementations.robust_cp import robust_cp
 from utils.utils import optimal_f1_threshold
