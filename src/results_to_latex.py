@@ -2,9 +2,6 @@ import mlflow
 import pandas as pd
 
 
-# 2. Define the metrics you WANT
-
-
 def params_latex(df: pd.DataFrame):
     df["params.rank"] = df["params.rank"].combine_first(df["params.ranks"])
 
@@ -75,12 +72,12 @@ def metric_latex(df):
 
 def main():
     tag = "334ff57f"
-    df = mlflow.search_runs(
-        filter_string=f"tags.eval_run = '{tag}' AND metrics.f1 >=0",
+    # df = mlflow.search_runs(
+    #     filter_string=f"tags.eval_run = '{tag}' AND metrics.f1 >=0",
         search_all_experiments=True,
     )
-    params_latex(df)
-    metric_latex(df)
+    # params_latex(df)
+    # metric_latex(df)
 
 
 if __name__ == "__main__":

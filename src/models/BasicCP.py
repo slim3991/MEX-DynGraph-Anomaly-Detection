@@ -30,7 +30,6 @@ class MyCPTenDecomp(BaseEstimator, TransformerMixin):
 
         if y is not None:
             self.threshold_, _ = optimal_f1_threshold(X_hat, y)
-
         return self
 
     def transform(self, X: Tensor) -> Tensor:

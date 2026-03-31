@@ -82,14 +82,7 @@ def run_tensor_experiment(
     T, L, events, data_params = data_fetch_func()
 
     def objective(trial):
-        with mlflow.start_run(
-            nested=True,
-            tags={
-                "group_tag": tag,
-                "model_name": model_name,
-                "level": "model",
-            },
-        ):
+        with mlflow.start_run(nested=True, tags={"run_tag": tag}):
             model, trial_params = suggest_and_build_model(trial, T)
 
             trial_params["anomaly_type"] = anomaly_type
@@ -104,12 +97,7 @@ def run_tensor_experiment(
             mlflow.log_metrics(metrics_dict)
             return metrics.pr_auc if metrics.pr_auc is not None else 0
 
-    mlflow.set_model(model_name)
-    with mlflow.start_run(
-        nested=True,
-        run_name=model_name,
-        tags={"run_tag": tag, "model_name": model_name, "level": "trial"},
-    ):
+    with mlflow.start_run(run_name=model_name, tags={"run_tag": tag}):
         mlflow.log_params(
             {
                 "model_name": model_name,
@@ -243,44 +231,42 @@ def robust_cp_builder(trial, T):
 def main():
     tag = secrets.token_hex(4)
 
-    with mlflow.start_run(run_name=f"Group_experiment_tag{tag}"):
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="BasicCP",
+    #     suggest_and_build_model=cp_builder,
+    #     anomaly_type="events",
+    #     tag=tag,
+    # )
 
-        # run_tensor_experiment(
-        #     experiment_name="Tensor_Decomp",
-        #     model_name="BasicCP",
-        #     suggest_and_build_model=cp_builder,
-        #     anomaly_type="events",
-        #     tag=tag,
-        # )
-
-        # run_tensor_experiment(
-        #     experiment_name="Tensor_Decomp",
-        #     model_name="Basic Tucker",
-        #     suggest_and_build_model=tucker_builder,
-        #     anomaly_type="spike",
-        #     tag=tag,
-        # )
-        # run_tensor_experiment(
-        #     experiment_name="Tensor_Decomp",
-        #     model_name="Robust CP",
-        #     suggest_and_build_model=robust_cp_builder,
-        #     anomaly_type="spike",
-        #     tag=tag,
-        # )
-        # run_tensor_experiment(
-        #     experiment_name="Tensor_Decomp",
-        #     model_name="RHOOI",
-        #     suggest_and_build_model=rhooi_builder,
-        #     anomaly_type="spike",
-        #     tag=tag,
-        # )
-        run_tensor_experiment(
-            experiment_name="Tensor_Decomp",
-            model_name="GRTen",
-            suggest_and_build_model=grten_builder,
-            anomaly_type="spike",
-            tag=tag,
-        )
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="Basic Tucker",
+    #     suggest_and_build_model=tucker_builder,
+    #     anomaly_type="spike",
+    #     tag=tag,
+    # )
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="Robust CP",
+    #     suggest_and_build_model=robust_cp_builder,
+    #     anomaly_type="spike",
+    #     tag=tag,
+    # )
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="RHOOI",
+    #     suggest_and_build_model=rhooi_builder,
+    #     anomaly_type="spike",
+    #     tag=tag,
+    # )
+    run_tensor_experiment(
+        experiment_name="Tensor_Decomp",
+        model_name="GRTen",
+        suggest_and_build_model=grten_builder,
+        anomaly_type="spike",
+        tag=tag,
+    )
 
 
 if __name__ == "__main__":

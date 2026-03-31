@@ -8,7 +8,6 @@ from utils.utils import optimal_f1_threshold
 
 
 type Tensor = tl.tensor | npt.NDArray
-type objective_func = Callable[[optuna.Trial, Transformer, Tensor, Tensor], float]
 
 
 class Transformer(Protocol):

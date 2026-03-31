@@ -115,7 +115,7 @@ def compute_metrics_with_threshold(
     Compute metrics based on a fixed, pre-defined threshold.
     """
     if threshold is None:
-        threshold = np.percentile(probs, 90)
+        threshold = np.percentile(probs, 90.0)
     y_pred = (probs > threshold).astype(int)
     event_tpr = None
     event_score = None
