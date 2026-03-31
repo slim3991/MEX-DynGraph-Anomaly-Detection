@@ -20,9 +20,11 @@ class MyRHOOITenDecomp(BaseEstimator, TransformerMixin):
         self,
         ranks: Sequence[int],
         local_threshold: float = 1e-6,
+        threshold: Optional[float] = None,
     ):
         self.ranks = ranks
         self.local_threshold = local_threshold
+        self.threshold = threshold
 
         # Learned attributes
         self.threshold_ = None

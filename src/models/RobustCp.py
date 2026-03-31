@@ -20,10 +20,12 @@ class MyRCPTenDecomp(BaseEstimator, TransformerMixin):
     def __init__(
         self,
         rank: int = 5,
+        threshold: Optional[float] = None,
         local_threshold: Optional[float] = None,
     ):
         self.rank = rank
         self.local_threshold = local_threshold
+        self.threshold = threshold
 
         # Initializing learned parameters to None
         self.threshold_ = None

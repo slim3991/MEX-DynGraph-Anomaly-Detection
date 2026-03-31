@@ -14,7 +14,8 @@ type Tensor = npt.NDArray  # Simplified for clarity
 
 
 class MyCPTenDecomp(BaseEstimator, TransformerMixin):
-    def __init__(self, rank: int = 5):
+    def __init__(self, rank: int = 5, threshold: Optional[float] = None):
+        self.threshold = threshold
         self.rank = rank
         self.threshold_ = None
         self.factors = None

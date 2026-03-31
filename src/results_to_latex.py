@@ -11,6 +11,7 @@ def params_latex(df: pd.DataFrame):
     cols_to_keep = [
         "params.name",
         "params.rank",
+        "params.local_threshold",
         "params.threshold",
         "params.lambdas",
         "params.ks",
@@ -71,13 +72,13 @@ def metric_latex(df):
 
 
 def main():
-    tag = "334ff57f"
-    # df = mlflow.search_runs(
-    #     filter_string=f"tags.eval_run = '{tag}' AND metrics.f1 >=0",
+    tag = "4ac41707"
+    df = mlflow.search_runs(
+        filter_string=f"tags.eval_run = '{tag}' AND metrics.f1 >=0",
         search_all_experiments=True,
     )
-    # params_latex(df)
-    # metric_latex(df)
+    params_latex(df)
+    metric_latex(df)
 
 
 if __name__ == "__main__":

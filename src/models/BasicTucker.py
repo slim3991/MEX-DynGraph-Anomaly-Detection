@@ -16,11 +16,11 @@ class Transformer(Protocol):
 
 class MyTuckerTenDecomp(BaseEstimator, TransformerMixin):
     def __init__(
-        self,
-        ranks: Sequence[int] = (5, 5, 5),
+        self, ranks: Sequence[int] = (5, 5, 5), threshold: Optional[float] = None
     ):
         self.ranks = ranks
         self.threshold_ = None
+        self.threshold = threshold
         self.tucker_parts_ = None
 
     @property

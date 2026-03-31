@@ -17,6 +17,9 @@ from models.RobustCp import MyRCPTenDecomp
 from utils.tensor_processing import make_mode_laplacian
 
 
+has_asked = False
+
+
 def get_git_hash():
     try:
         return (
@@ -30,6 +33,9 @@ def get_git_hash():
 
 def check_git_status():
     """Checks if there are uncommitted changes and warns the user."""
+    global has_asked
+    if has_asked:
+        return
     try:
         # --porcelain gives a script-friendly output; empty means clean
         status = (
@@ -50,6 +56,7 @@ def check_git_status():
             if response.lower() != "y":
                 print("Aborting run. Commit your changes first!")
                 sys.exit(1)
+            has_asked = True
         else:
             print("✅ Git repository is clean. Proceeding...")
     except subprocess.CalledProcessError:
@@ -70,6 +77,7 @@ def run_tensor_experiment(
     tag=None,
 ):
     check_git_status()
+    model_tag = secrets.token_hex(4)
 
     np.random.seed(seed)
     mlflow.set_experiment(experiment_name)
@@ -81,15 +89,22 @@ def run_tensor_experiment(
         else create_event_dataset_train
     )
 
-    def objective(trial):
-        with mlflow.start_run(nested=True, tags={"run_tag": tag}):
+    def objective(trial: optuna.Trial):
+        with mlflow.start_run(nested=True, tags={"group_tag": tag}):
+            n = 3
             ave_metrics = None
-            for _ in range(3):
+            for _ in range(n):
                 T, L, events, data_params = data_fetch_func()
                 model, trial_params = suggest_and_build_model(trial, T)
 
                 trial_params["anomaly_type"] = anomaly_type
-                mlflow.log_params(trial_params)
+                mlflow.log_params(
+                    {
+                        **trial_params,
+                        "trial_num": trial.number,
+                        "model_tag": model_tag,
+                    }
+                )
                 model.fit(T, L)
                 resids = model.residuals(T)
                 metrics = compute_metrics_with_threshold(
@@ -102,7 +117,7 @@ def run_tensor_experiment(
 
                 # ave_metric = metrics if ave_metrics is None else ave_metrics + metrics
             assert ave_metrics is not None
-            ave_metrics = ave_metrics / 3
+            ave_metrics = ave_metrics / n
 
             metrics_dict = {
                 k: v for k, v in asdict(ave_metrics).items() if v is not None
@@ -110,10 +125,14 @@ def run_tensor_experiment(
             mlflow.log_metrics(metrics_dict)
             return ave_metrics.pr_auc if ave_metrics.pr_auc is not None else 0
 
-    with mlflow.start_run(run_name=model_name, tags={"run_tag": tag}):
+    with mlflow.start_run(
+        run_name=f"{model_name}-({model_tag}-({anomaly_type}))", tags={"run_tag": tag}
+    ):
         mlflow.log_params(
             {
                 "model_name": model_name,
+                "model_tag": model_tag,
+                "group_tag": tag,
                 "git_hash": get_git_hash(),
                 "seed": seed,
                 "anomaly_type": anomaly_type,
@@ -121,12 +140,13 @@ def run_tensor_experiment(
         )
 
         study = optuna.create_study(
-            direction="maximize", study_name=model_name + f"-{tag}"
+            direction="maximize",
+            study_name=f"study: ({tag}), {model_name}-({model_tag})",
         )
         study.optimize(objective, n_trials=n_trials)
 
         mlflow.log_params(study.best_params)
-        mlflow.log_metric("best_pr_auc", study.best_value)
+        mlflow.log_metric("pr_auc", study.best_value)
 
     print(f"Best value: {study.best_value} for {model_name}")
 
@@ -242,12 +262,13 @@ def robust_cp_builder(trial, T):
 
 def main():
     tag = secrets.token_hex(4)
+    anomaly_type = "event"
 
     run_tensor_experiment(
         experiment_name="Tensor_Decomp",
         model_name="BasicCP",
         suggest_and_build_model=cp_builder,
-        anomaly_type="events",
+        anomaly_type=anomaly_type,
         tag=tag,
     )
 
@@ -255,7 +276,7 @@ def main():
         experiment_name="Tensor_Decomp",
         model_name="Basic Tucker",
         suggest_and_build_model=tucker_builder,
-        anomaly_type="spike",
+        anomaly_type=anomaly_type,
         tag=tag,
     )
 
@@ -263,7 +284,7 @@ def main():
         experiment_name="Tensor_Decomp",
         model_name="Robust CP",
         suggest_and_build_model=robust_cp_builder,
-        anomaly_type="spike",
+        anomaly_type=anomaly_type,
         tag=tag,
     )
 
@@ -271,7 +292,7 @@ def main():
         experiment_name="Tensor_Decomp",
         model_name="RHOOI",
         suggest_and_build_model=rhooi_builder,
-        anomaly_type="spike",
+        anomaly_type=anomaly_type,
         tag=tag,
     )
 
@@ -279,7 +300,7 @@ def main():
         experiment_name="Tensor_Decomp",
         model_name="GRTen",
         suggest_and_build_model=grten_builder,
-        anomaly_type="spike",
+        anomaly_type=anomaly_type,
         tag=tag,
     )
 

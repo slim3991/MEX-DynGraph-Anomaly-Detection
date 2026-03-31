@@ -17,6 +17,7 @@ class MyGRTenDecomp(BaseEstimator, TransformerMixin):
         lambdas: Sequence[float] = (0.1, 0.1, 0.1),
         ks: Optional[Sequence[int]] = (5, 5, 5),
         local_threshold: Optional[float] = None,
+        threshold: Optional[float] = None,
         laps: Optional[List] = None,
         measure: Literal[
             "angular", "euclidean", "manhattan", "hamming", "dot"
@@ -28,6 +29,7 @@ class MyGRTenDecomp(BaseEstimator, TransformerMixin):
         self.local_threshold = local_threshold
         self.laps = laps
         self.measure = measure
+        self.threshold = threshold
 
         # Learned attributes
         self.threshold_ = None

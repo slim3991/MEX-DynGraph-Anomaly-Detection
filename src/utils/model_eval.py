@@ -45,7 +45,8 @@ def evaluate_model(
     n_runs: int = 10,
     anomaly_type: Literal["spikes", "events"] = "spikes",
     train_test: Literal["train", "test"] = "test",
-):
+    threshold: Optional[float] = None,
+) -> Dict[str, float]:
     metric_sum = None
     dataset_func = fetch_dataset_fetch_func(
         anomaly_type=anomaly_type, train_test=train_test
@@ -56,15 +57,15 @@ def evaluate_model(
 
         resids = T - T_hat
         metrics = compute_metrics_with_threshold(
-            resids, L, threshold=None, events=events
+            resids, L, threshold=threshold, events=events
         )
         tqdm.write("PR_AUC: " + str(metrics.pr_auc))
         metric_sum = metrics if metric_sum is None else metric_sum + metrics
     ave_metrics = metric_sum / n_runs
-    print(print_metrics(ave_metrics))
     ave_dict = asdict(ave_metrics)
     ave_dict = {k: v for k, v in ave_dict.items() if v is not None}
 
     mlflow.log_metrics(ave_dict)
 
     print_metrics(ave_metrics)
+    return ave_dict

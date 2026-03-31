@@ -71,7 +71,7 @@ class Metrics:
             f1=self._safe_add(self.f1, other.f1),
             fpr=self.fpr + other.fpr,
             tpr=self.tpr + other.tpr,
-            threshold=self.threshold,
+            threshold=self._safe_add(self.threshold, other.threshold),
             TP=self.TP + other.TP,
             FP=self.FP + other.FP,
             TN=self.TN + other.TN,
@@ -90,7 +90,7 @@ class Metrics:
             f1=self._safe_div(self.f1, n),
             fpr=self.fpr / n,
             tpr=self.tpr / n,
-            threshold=self.threshold,
+            threshold=self._safe_div(self.threshold, n),
             TP=self.TP / n,
             FP=self.FP / n,
             TN=self.TN / n,
@@ -253,9 +253,10 @@ def print_metrics(metrics: Metrics) -> None:
     print("\nConfusion Matrix:")
     print(f"TP: {metrics.TP}, FP: {metrics.FP}")
     print(f"FN: {metrics.FN}, TN: {metrics.TN}")
-    print(
-        f"Events score: {metrics.events_score:.2%}, events TPR: {metrics.events_tpr:.2%}"
-    )
+    if metrics.events_score is not None and metrics.events_tpr is not None:
+        print(
+            f"Events score: {metrics.events_score:.2%}, events TPR: {metrics.events_tpr:.2%}"
+        )
 
 
 # ============================================================
