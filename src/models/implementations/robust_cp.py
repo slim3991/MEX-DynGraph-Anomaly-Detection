@@ -65,11 +65,9 @@ def robust_cp(X, rank, n_iter=50, tol=1e-6, verbose=False, init="svd", threshold
         X_hat = tl.cp_to_tensor((weights, factors))
         residuals = X - X_hat
 
-        # Error
         error = np.linalg.norm(residuals) / tl.norm(M)
         diff = abs(old_error - error)
 
-        # Step 2: anomaly detection (same as your version)
         S = detect_anomalies_soft(residuals, threshold=threshold)
 
         # Update clean tensor

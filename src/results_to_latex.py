@@ -40,35 +40,45 @@ def params_latex(df: pd.DataFrame):
 
 
 def metric_latex(df):
-
     cols_to_keep = [
         "params.name",
         "metrics.f1",
         "metrics.pr_auc",
         "metrics.recall",
         "metrics.precision",
+        "metrics.events_tpr",
+        "metrics.events_score",
     ]
-    available_cols = [c for c in cols_to_keep if c in df.columns]
+
+    # Keep only columns that exist AND have at least one non-null value
+    available_cols = [
+        c for c in cols_to_keep if c in df.columns and df[c].notna().any()
+    ]
 
     if not available_cols:
         print("No runs found with the specified metrics.")
-    else:
-        filtered_df = df[available_cols].copy()
+        return
 
-        # 4. Clean up column names for LaTeX
-        filtered_df.columns = [
-            c.split(".")[-1].replace("_", " ").title() for c in filtered_df.columns
-        ]
+    filtered_df = df[available_cols].copy()
 
-        # 5. Generate LaTeX
-        latex_code = filtered_df.to_latex(
-            index=False,
-            caption="Average of 10 evaluation with random anomalies. This was evaluated on the same data as it was trained on but with new anomalies",
-            label="tab:eval-train-rand-anomalies",
-            float_format="%.4f",
-            column_format="l" + "c" * (len(filtered_df.columns) - 1),
-        )
-        print(latex_code)
+    # Clean up column names for LaTeX
+    filtered_df.columns = [
+        c.split(".")[-1].replace("_", " ").title() for c in filtered_df.columns
+    ]
+
+    latex_code = filtered_df.to_latex(
+        index=False,
+        caption=(
+            "Average of 10 evaluation with random anomalies. "
+            "This was evaluated on the same data as it was trained on "
+            "but with new anomalies"
+        ),
+        label="tab:eval-train-rand-anomalies",
+        float_format="%.4f",
+        column_format="l" + "c" * (len(filtered_df.columns) - 1),
+    )
+
+    print(latex_code)
 
 
 def main():

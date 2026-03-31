@@ -90,7 +90,12 @@ def run_tensor_experiment(
     )
 
     def objective(trial: optuna.Trial):
-        with mlflow.start_run(nested=True, tags={"group_tag": tag}):
+        trial_number = trial.number
+        with mlflow.start_run(
+            run_name=f"{model_name}-({model_tag})-run{trial_number}-({anomaly_type})",
+            nested=True,
+            tags={"group_tag": tag},
+        ):
             n = 3
             ave_metrics = None
             for _ in range(n):
@@ -126,7 +131,7 @@ def run_tensor_experiment(
             return ave_metrics.pr_auc if ave_metrics.pr_auc is not None else 0
 
     with mlflow.start_run(
-        run_name=f"{model_name}-({model_tag}-({anomaly_type}))", tags={"run_tag": tag}
+        run_name=f"{model_name}-({model_tag})-({anomaly_type})", tags={"run_tag": tag}
     ):
         mlflow.log_params(
             {
