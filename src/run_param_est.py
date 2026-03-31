@@ -1,3 +1,4 @@
+from math import radians
 import secrets
 import sys
 import mlflow
@@ -7,7 +8,7 @@ import subprocess
 from dataclasses import asdict
 from typing import Callable, Any
 from utils.datasets import create_event_dataset_train, create_spike_dataset_train
-from utils.metrics import compute_metrics_with_threshold
+from utils.metrics import Metrics, compute_metrics_with_threshold
 from models import MyGRTenDecomp
 from models.BasicCP import MyCPTenDecomp
 from models.BasicTucker import MyTuckerTenDecomp
@@ -79,23 +80,35 @@ def run_tensor_experiment(
         if anomaly_type == "spike"
         else create_event_dataset_train
     )
-    T, L, events, data_params = data_fetch_func()
 
     def objective(trial):
         with mlflow.start_run(nested=True, tags={"run_tag": tag}):
-            model, trial_params = suggest_and_build_model(trial, T)
+            ave_metrics = None
+            for _ in range(3):
+                T, L, events, data_params = data_fetch_func()
+                model, trial_params = suggest_and_build_model(trial, T)
 
-            trial_params["anomaly_type"] = anomaly_type
-            mlflow.log_params(trial_params)
-            model.fit(T, L)
-            resids = model.residuals(T)
-            metrics = compute_metrics_with_threshold(
-                resids, L, model.threshold_, events=events
-            )
+                trial_params["anomaly_type"] = anomaly_type
+                mlflow.log_params(trial_params)
+                model.fit(T, L)
+                resids = model.residuals(T)
+                metrics = compute_metrics_with_threshold(
+                    resids, L, model.threshold_, events=events
+                )
+                if ave_metrics is None:
+                    ave_metrics = metrics
+                else:
+                    ave_metrics += metrics
 
-            metrics_dict = {k: v for k, v in asdict(metrics).items() if v is not None}
+                # ave_metric = metrics if ave_metrics is None else ave_metrics + metrics
+            assert ave_metrics is not None
+            ave_metrics = ave_metrics / 3
+
+            metrics_dict = {
+                k: v for k, v in asdict(ave_metrics).items() if v is not None
+            }
             mlflow.log_metrics(metrics_dict)
-            return metrics.pr_auc if metrics.pr_auc is not None else 0
+            return ave_metrics.pr_auc if ave_metrics.pr_auc is not None else 0
 
     with mlflow.start_run(run_name=model_name, tags={"run_tag": tag}):
         mlflow.log_params(
@@ -104,7 +117,6 @@ def run_tensor_experiment(
                 "git_hash": get_git_hash(),
                 "seed": seed,
                 "anomaly_type": anomaly_type,
-                **data_params,
             }
         )
 
@@ -231,35 +243,38 @@ def robust_cp_builder(trial, T):
 def main():
     tag = secrets.token_hex(4)
 
-    # run_tensor_experiment(
-    #     experiment_name="Tensor_Decomp",
-    #     model_name="BasicCP",
-    #     suggest_and_build_model=cp_builder,
-    #     anomaly_type="events",
-    #     tag=tag,
-    # )
+    run_tensor_experiment(
+        experiment_name="Tensor_Decomp",
+        model_name="BasicCP",
+        suggest_and_build_model=cp_builder,
+        anomaly_type="events",
+        tag=tag,
+    )
 
-    # run_tensor_experiment(
-    #     experiment_name="Tensor_Decomp",
-    #     model_name="Basic Tucker",
-    #     suggest_and_build_model=tucker_builder,
-    #     anomaly_type="spike",
-    #     tag=tag,
-    # )
-    # run_tensor_experiment(
-    #     experiment_name="Tensor_Decomp",
-    #     model_name="Robust CP",
-    #     suggest_and_build_model=robust_cp_builder,
-    #     anomaly_type="spike",
-    #     tag=tag,
-    # )
-    # run_tensor_experiment(
-    #     experiment_name="Tensor_Decomp",
-    #     model_name="RHOOI",
-    #     suggest_and_build_model=rhooi_builder,
-    #     anomaly_type="spike",
-    #     tag=tag,
-    # )
+    run_tensor_experiment(
+        experiment_name="Tensor_Decomp",
+        model_name="Basic Tucker",
+        suggest_and_build_model=tucker_builder,
+        anomaly_type="spike",
+        tag=tag,
+    )
+
+    run_tensor_experiment(
+        experiment_name="Tensor_Decomp",
+        model_name="Robust CP",
+        suggest_and_build_model=robust_cp_builder,
+        anomaly_type="spike",
+        tag=tag,
+    )
+
+    run_tensor_experiment(
+        experiment_name="Tensor_Decomp",
+        model_name="RHOOI",
+        suggest_and_build_model=rhooi_builder,
+        anomaly_type="spike",
+        tag=tag,
+    )
+
     run_tensor_experiment(
         experiment_name="Tensor_Decomp",
         model_name="GRTen",
