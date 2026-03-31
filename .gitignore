@@ -211,4 +211,4 @@ raw_data/
 data/
 mlruns/
 *.db
-
+archive/   
