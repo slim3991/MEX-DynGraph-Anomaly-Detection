@@ -14,7 +14,6 @@ from models.BasicCP import MyCPTenDecomp
 from models.BasicTucker import MyTuckerTenDecomp
 from models.RHOOI_model import MyRHOOITenDecomp
 from models.RobustCp import MyRCPTenDecomp
-from utils.tensor_processing import make_mode_laplacian, make_mode_laplacian_annoy
 
 
 has_asked = False
@@ -163,65 +162,35 @@ def run_tensor_experiment(
 def grten_builder(trial, T):
     trial_params = {
         "rank": trial.suggest_int("rank", 1, 20),
-        "lambda_0": trial.suggest_float("lambda_0", 1e-2, 1e2, log=True),
-        "lambda_1": trial.suggest_float("lambda_1", 1e-2, 1e2, log=True),
-        "lambda_2": trial.suggest_float("lambda_2", 1e-2, 1e2, log=True),
+        "lambda_0": trial.suggest_float("lambda_0", 1e-4, 1e2, log=True),
+        "lambda_1": trial.suggest_float("lambda_1", 1e-4, 1e2, log=True),
+        "lambda_2": trial.suggest_float("lambda_2", 1e-4, 1e2, log=True),
         "distance": trial.suggest_categorical(
             "distance", ["dot", "euclidean", "angular"]
         ),
         "k1": trial.suggest_int("k1", 0, min(T.shape[0], 500)),
         "k2": trial.suggest_int("k2", 0, min(T.shape[0], 500)),
         "k3": trial.suggest_int("k3", 0, min(T.shape[0], 500)),
-        "local_threshold": trial.suggest_float("local_threshold", 0, 2),
+        "local_threshold": trial.suggest_float("local_threshold", 0, 3),
     }
 
-    laps = [
-        (
-            make_mode_laplacian_annoy(
-                T,
-                mode=0,
-                k=trial_params["k1"],
-                normalize=True,
-                measure=trial_params["distance"],
-            )
-            if trial_params["k1"] != 0
-            else None
-        ),
-        (
-            make_mode_laplacian_annoy(
-                T,
-                mode=1,
-                k=trial_params["k2"],
-                normalize=True,
-                measure=trial_params["distance"],
-            )
-            if trial_params["k1"] != 0
-            else None
-        ),
-        (
-            make_mode_laplacian_annoy(
-                T,
-                mode=2,
-                k=trial_params["k3"],
-                normalize=True,
-                measure=trial_params["distance"],
-            )
-            if trial_params["k1"] != 0
-            else None
-        ),
-    ]
     lambdas = [
         trial_params["lambda_0"],
         trial_params["lambda_1"],
         trial_params["lambda_2"],
     ]
+    ks = [
+        trial_params["k1"],
+        trial_params["k2"],
+        trial_params["k3"],
+    ]
 
     model = MyGRTenDecomp(
         rank=trial_params["rank"],
         lambdas=lambdas,
-        ks=None,
+        ks=ks,
         local_threshold=trial_params["local_threshold"],
-        laps=laps,
+        measure=trial_params["distance"],
     )
     return model, trial_params
 
@@ -279,7 +248,7 @@ def robust_cp_builder(trial, T):
 
 def main():
     tag = secrets.token_hex(4)
-    anomaly_type = "event"
+    anomaly_type = "spikes"
 
     # run_tensor_experiment(
     #     experiment_name="Tensor_Decomp",

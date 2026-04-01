@@ -105,7 +105,7 @@ def make_mode_knn_annoy(
     index = AnnoyIndex(n_features, metric=distance)
     for i in range(n_samples):
         index.add_item(i, X[i])
-    index.build(500)
+    index.build(50)
 
     W = lil_matrix((n_samples, n_samples))
 
@@ -235,108 +235,4 @@ def make_mode_laplacian(
 
     if not sparse:
         return L.toarray()
-    return L
-
-
-def make_mode_laplacian_annoy(
-    tensor,
-    mode: int,
-    k: int = 10,
-    n_trees: int = 50,
-    search_k: int = -1,
-    normalize: bool = True,
-    local_scaling: bool = True,
-    measure: str = "euclidean",
-):
-    """
-    Build a high-quality graph Laplacian using:
-    - Annoy kNN
-    - RBF weights
-    - Mutual kNN
-    - Optional local scaling
-
-    Returns
-    -------
-    L : csr_matrix
-    """
-
-    # --- 1. Unfold tensor ---
-    X = tl.base.unfold(tensor, mode=mode)
-    n_samples, n_features = X.shape
-
-    # --- 2. Normalize rows (VERY important for traffic data) ---
-    norms = np.linalg.norm(X, axis=1, keepdims=True) + 1e-12
-    X = X / norms
-
-    # --- 3. Build Annoy index ---
-    index = AnnoyIndex(n_features, metric=measure)
-    for i in range(n_samples):
-        index.add_item(i, X[i])
-    index.build(n_trees)
-
-    if search_k == -1:
-        search_k = n_trees * k * 2
-
-    # --- 4. Collect neighbors + distances ---
-    neighbors_list = []
-    distances_list = []
-
-    for i in range(n_samples):
-        neigh, dist = index.get_nns_by_item(
-            i, k + 1, search_k=search_k, include_distances=True
-        )
-
-        # remove self
-        neigh = np.array(neigh)
-        dist = np.array(dist)
-
-        mask = neigh != i
-        neigh = neigh[mask][:k]
-        dist = dist[mask][:k]
-
-        neighbors_list.append(neigh)
-        distances_list.append(dist)
-
-    # --- 5. Local scaling (Zelnik-Manor & Perona) ---
-    if local_scaling:
-        sigma = np.array([d[-1] if len(d) > 0 else 1.0 for d in distances_list])
-    else:
-        # fallback global sigma
-        all_dists = np.concatenate(distances_list)
-        sigma_val = np.median(all_dists)
-        sigma = np.full(n_samples, sigma_val)
-
-    # --- 6. Build weighted adjacency ---
-    W = lil_matrix((n_samples, n_samples))
-
-    for i in range(n_samples):
-        for j, d in zip(neighbors_list[i], distances_list[i]):
-            if local_scaling:
-                denom = sigma[i] * sigma[j] + 1e-12
-                weight = np.exp(-(d**2) / denom)
-            else:
-                weight = np.exp(-(d**2) / (2 * sigma[i] ** 2 + 1e-12))
-
-            W[i, j] = weight
-
-    # --- 7. Mutual k-NN (IMPORTANT) ---
-    W = W.tocsr()
-    W = W.minimum(W.T)
-
-    # --- 8. Build Laplacian ---
-    deg = np.array(W.sum(axis=1)).flatten()
-
-    if normalize:
-        with np.errstate(divide="ignore"):
-            d_inv_sqrt = deg**-0.5
-        d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.0
-
-        D_inv_sqrt = diags(d_inv_sqrt)
-        I = eye(W.shape[0], format="csr")
-
-        L = I - D_inv_sqrt @ W @ D_inv_sqrt
-    else:
-        D = diags(deg)
-        L = D - W
-
     return L

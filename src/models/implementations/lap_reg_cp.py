@@ -7,32 +7,12 @@ from utils.tensor_processing import make_mode_knn
 from utils.utils import detect_anomalies_soft, global_cg_sylvester
 
 
-# def detect_anomalies(S, factors, epsilon):
-#     M_hat = tl.cp_to_tensor(factors)
-#
-#     residuals = S - M_hat
-#
-#     flat_residuals = residuals.flatten() ** 2
-#
-#     if epsilon >= len(flat_residuals):
-#         threshold = 0
-#     else:
-#         threshold = np.partition(flat_residuals, -epsilon)[-epsilon]
-#
-#     E = np.where(residuals**2 >= threshold, S, 0)  # TODO: Verify this
-#
-#     anomaly_indices = np.argwhere(residuals >= threshold)
-#
-#     return E, anomaly_indices
-
-
 def graph_regularized_als(
     tensor,
     rank,
     laps,
     lmbda=(0.1, 0.1, 0.1),
     n_iter=20,
-    n_E=1000,
     verbose=False,
     threshold=None,
 ):
@@ -83,8 +63,9 @@ def graph_regularized_als(
             weights[r] *= norm
 
         res = M - tl.cp_to_tensor((weights, factors))
-        E = detect_anomalies_soft(res)
+        E = detect_anomalies_soft(res, threshold=threshold)
         M = tensor - E
+
         err = np.linalg.norm(res)
         delta = np.abs(err - old_err) / (old_err + 1e-12)
 

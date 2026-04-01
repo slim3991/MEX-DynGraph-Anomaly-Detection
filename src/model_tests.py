@@ -35,7 +35,11 @@ def main():
             ranks=(7, 3, 20),
             threshold=0.76,
         ),
-        MyRCPTenDecomp(rank=20, local_threshold=0.02, threshold=0.5),
+        MyRCPTenDecomp(
+            rank=20,
+            local_threshold=0.02,
+            threshold=0.5,
+        ),
         MyRHOOITenDecomp(
             ranks=(8, 10, 10),
             local_threshold=0.03,

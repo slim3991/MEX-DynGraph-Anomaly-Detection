@@ -5,15 +5,17 @@ from sklearn.preprocessing import normalize
 import tensorly as tl
 import optuna
 
+from models.GRTenDecomp import MyGRTenDecomp
+from models.RobustCp import MyRCPTenDecomp
 from models.implementations.lap_reg_cp import graph_regularized_als, estimate_from_laps
+from utils.anomaly_injector import inject_random_spikes_normal
 from utils.tensor_processing import (
     de_anomalize_tensor,
     make_mode_knn,
     make_mode_laplacian,
     normalize_tensor,
+    preprocess,
 )
-from utils.anomaly_injector import *
-from utils.model_eval import *
 
 
 T = np.load("data/abiline_ten.npy")
@@ -26,7 +28,25 @@ for i, j in product(range(12), repeat=2):
 source, dest = np.random.randint(0, 11), np.random.randint(0, 11)
 # source, dest = 5, 8
 
-T = de_anomalize_tensor(T, low_rank=20, keep_pecentile=95, alpha=0.4)
+T = preprocess(T, 20, 96, 0.5)
+T, L = inject_random_spikes_normal(T, 10)
+
+
+X_hat = MyGRTenDecomp(
+    rank=10,
+    ks=(5, 10, 9),
+    lambdas=(1.3, 0.002, 0.001),
+    local_threshold=0.7,
+    measure="euclidean",
+).fit_transform(T, L)
+x_rcp = MyRCPTenDecomp(rank=10, local_threshold=0.7).fit_transform(T, L)
+
+
+plt.plot(T[source, dest, :], alpha=0.5)
+plt.plot(X_hat[source, dest, :])
+plt.plot(x_rcp[source, dest, :])
+plt.show()
+exit()
 
 # best_score =score: {best_score}, best val {best_val}")
 # best (7,9,1,3)
