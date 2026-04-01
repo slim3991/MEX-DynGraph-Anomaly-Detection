@@ -27,42 +27,59 @@ dataset_fetch_func = Callable[[], Tuple[npt.NDArray, npt.NDArray, Optional[list]
 
 def main():
     models = [
-        MyCPTenDecomp(rank=17, threshold=0.4),
-        MyTuckerTenDecomp(ranks=(1, 8, 8), threshold=0.65),
-        MyRCPTenDecomp(rank=20, local_threshold=0.05),
-        MyRHOOITenDecomp(ranks=(11, 12, 7), local_threshold=0.61),
-        MyGRTenDecomp(
+        MyCPTenDecomp(
             rank=7,
-            lambdas=(0.3, 0.01, 0.04),
-            ks=(5, 5, 1),
+            threshold=0.7,
+        ),
+        MyTuckerTenDecomp(
+            ranks=(7, 3, 20),
+            threshold=0.76,
+        ),
+        MyRCPTenDecomp(rank=20, local_threshold=0.02, threshold=0.5),
+        MyRHOOITenDecomp(
+            ranks=(8, 10, 10),
+            local_threshold=0.03,
+            threshold=0.4,
+        ),
+        MyGRTenDecomp(
+            rank=15,
+            lambdas=(0.6, 0.01, 1.1),
+            ks=(5, 1, 4),
             laps=None,
             measure="angular",
-            local_threshold=1.5,
-            threshold=0.71,
+            local_threshold=1.8,
+            threshold=0.31,
         ),
     ]
     tag = secrets.token_hex(4)
     tag = {"eval_run": tag}
-    anomaly_type = "spikes"
-    train_test = "test"
+    anomaly_type = "events"
+    train_test = "train"
 
     mlflow.set_experiment(f"Evaluate Models")
 
-    with mlflow.start_run(run_name=f"model evals, {tag['eval_run']}", tags=tag):
+    with mlflow.start_run(
+        run_name=f"eval-{tag['eval_run']}({anomaly_type}-{train_test})", tags=tag
+    ):
         mlflow.log_params(
-            {
-                "anomaly_type": anomaly_type,
-                "train_test": train_test,
-            }
+            {"anomaly_type": anomaly_type, "train_test": train_test, "eval_tag": tag}
         )
         for model in models:
 
-            with mlflow.start_run(nested=True, tags=tag):
+            with mlflow.start_run(
+                run_name=f"eval-{tag['eval_run']}_model-{model.name}({anomaly_type}-{train_test})",
+                nested=True,
+                tags=tag,
+            ):
                 mlflow.log_params(model.get_params())
                 mlflow.log_param("name", model.name)
                 mlflow.set_active_model(name=model.name)
                 mlflow.log_params(
-                    {"anomaly_type": anomaly_type, "train_test": train_test}
+                    {
+                        "anomaly_type": anomaly_type,
+                        "train_test": train_test,
+                        "eval_tag": tag,
+                    }
                 )
                 metrics: Dict[str, float] = evaluate_model(
                     model,

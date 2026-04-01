@@ -14,7 +14,7 @@ from models.BasicCP import MyCPTenDecomp
 from models.BasicTucker import MyTuckerTenDecomp
 from models.RHOOI_model import MyRHOOITenDecomp
 from models.RobustCp import MyRCPTenDecomp
-from utils.tensor_processing import make_mode_laplacian
+from utils.tensor_processing import make_mode_laplacian, make_mode_laplacian_annoy
 
 
 has_asked = False
@@ -169,33 +169,45 @@ def grten_builder(trial, T):
         "distance": trial.suggest_categorical(
             "distance", ["dot", "euclidean", "angular"]
         ),
-        "k1": trial.suggest_int("k1", 1, min(T.shape[0], 500)),
-        "k2": trial.suggest_int("k2", 1, min(T.shape[0], 500)),
-        "k3": trial.suggest_int("k3", 1, min(T.shape[0], 500)),
+        "k1": trial.suggest_int("k1", 0, min(T.shape[0], 500)),
+        "k2": trial.suggest_int("k2", 0, min(T.shape[0], 500)),
+        "k3": trial.suggest_int("k3", 0, min(T.shape[0], 500)),
         "local_threshold": trial.suggest_float("local_threshold", 0, 2),
     }
 
     laps = [
-        make_mode_laplacian(
-            T,
-            mode=0,
-            k=trial_params["k1"],
-            normalize=True,
-            measure=trial_params["distance"],
+        (
+            make_mode_laplacian_annoy(
+                T,
+                mode=0,
+                k=trial_params["k1"],
+                normalize=True,
+                measure=trial_params["distance"],
+            )
+            if trial_params["k1"] != 0
+            else None
         ),
-        make_mode_laplacian(
-            T,
-            mode=1,
-            k=trial_params["k2"],
-            normalize=True,
-            measure=trial_params["distance"],
+        (
+            make_mode_laplacian_annoy(
+                T,
+                mode=1,
+                k=trial_params["k2"],
+                normalize=True,
+                measure=trial_params["distance"],
+            )
+            if trial_params["k1"] != 0
+            else None
         ),
-        make_mode_laplacian(
-            T,
-            mode=2,
-            k=trial_params["k3"],
-            normalize=True,
-            measure=trial_params["distance"],
+        (
+            make_mode_laplacian_annoy(
+                T,
+                mode=2,
+                k=trial_params["k3"],
+                normalize=True,
+                measure=trial_params["distance"],
+            )
+            if trial_params["k1"] != 0
+            else None
         ),
     ]
     lambdas = [
@@ -269,37 +281,37 @@ def main():
     tag = secrets.token_hex(4)
     anomaly_type = "event"
 
-    run_tensor_experiment(
-        experiment_name="Tensor_Decomp",
-        model_name="BasicCP",
-        suggest_and_build_model=cp_builder,
-        anomaly_type=anomaly_type,
-        tag=tag,
-    )
-
-    run_tensor_experiment(
-        experiment_name="Tensor_Decomp",
-        model_name="Basic Tucker",
-        suggest_and_build_model=tucker_builder,
-        anomaly_type=anomaly_type,
-        tag=tag,
-    )
-
-    run_tensor_experiment(
-        experiment_name="Tensor_Decomp",
-        model_name="Robust CP",
-        suggest_and_build_model=robust_cp_builder,
-        anomaly_type=anomaly_type,
-        tag=tag,
-    )
-
-    run_tensor_experiment(
-        experiment_name="Tensor_Decomp",
-        model_name="RHOOI",
-        suggest_and_build_model=rhooi_builder,
-        anomaly_type=anomaly_type,
-        tag=tag,
-    )
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="BasicCP",
+    #     suggest_and_build_model=cp_builder,
+    #     anomaly_type=anomaly_type,
+    #     tag=tag,
+    # )
+    #
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="Basic Tucker",
+    #     suggest_and_build_model=tucker_builder,
+    #     anomaly_type=anomaly_type,
+    #     tag=tag,
+    # )
+    #
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="Robust CP",
+    #     suggest_and_build_model=robust_cp_builder,
+    #     anomaly_type=anomaly_type,
+    #     tag=tag,
+    # )
+    #
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="RHOOI",
+    #     suggest_and_build_model=rhooi_builder,
+    #     anomaly_type=anomaly_type,
+    #     tag=tag,
+    # )
 
     run_tensor_experiment(
         experiment_name="Tensor_Decomp",

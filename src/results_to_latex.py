@@ -68,11 +68,7 @@ def metric_latex(df):
 
     latex_code = filtered_df.to_latex(
         index=False,
-        caption=(
-            "Average of 10 evaluation with random anomalies. "
-            "This was evaluated on the same data as it was trained on "
-            "but with new anomalies"
-        ),
+        caption=("Average of 10 evaluation with random anomalies. train"),
         label="tab:eval-train-rand-anomalies",
         float_format="%.4f",
         column_format="l" + "c" * (len(filtered_df.columns) - 1),
@@ -82,7 +78,7 @@ def metric_latex(df):
 
 
 def main():
-    tag = "4ac41707"
+    tag = "32775a13"
     df = mlflow.search_runs(
         filter_string=f"tags.eval_run = '{tag}' AND metrics.f1 >=0",
         search_all_experiments=True,

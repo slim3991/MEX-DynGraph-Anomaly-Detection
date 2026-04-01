@@ -41,6 +41,9 @@ class MyGRTenDecomp(BaseEstimator, TransformerMixin):
     def name(self):
         return "GRT"
 
+    def _is_no_mode(self, mode) -> bool:
+        return False
+
     def fit(self, X: Tensor, y: Optional[Tensor] = None):
         if (self.ks is None) and (self.laps is None):
             raise ValueError("One of 'ks' or 'laps' must be provided.")
@@ -50,8 +53,10 @@ class MyGRTenDecomp(BaseEstimator, TransformerMixin):
         else:
             # Dynamically generate Laplacians for each mode
             self.laps_ = [
-                make_mode_laplacian(
-                    X, mode=i, k=self.ks[i], normalize=True, measure=self.measure
+                (
+                    make_mode_laplacian_annoy(
+                        X, mode=i, k=self.ks[i], normalize=True, measure=self.measure
+                    )
                 )
                 for i in range(X.ndim)
             ]
