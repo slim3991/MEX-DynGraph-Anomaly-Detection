@@ -19,12 +19,14 @@ class MyRHOOITenDecomp(BaseEstimator, TransformerMixin):
     def __init__(
         self,
         ranks: Sequence[int],
-        local_threshold: float = 1e-6,
+        local_threshold: Optional[float] = 1e-6,
         threshold: Optional[float] = None,
+        tol=1e-6,
     ):
         self.ranks = ranks
         self.local_threshold = local_threshold
         self.threshold = threshold
+        self.tol = tol
 
         # Learned attributes
         self.threshold_ = None
@@ -32,10 +34,12 @@ class MyRHOOITenDecomp(BaseEstimator, TransformerMixin):
 
     @property
     def name(self):
-        return "RHOOI"
+        return "Robust Tucker (RHOOI)"
 
     def fit(self, X: Tensor, y: Tensor):
-        factors, _ = r_hooi(X, ranks=self.ranks, threshold=self.local_threshold)
+        factors, _ = r_hooi(
+            X, ranks=self.ranks, threshold=self.local_threshold, tol=self.tol
+        )
         self.factors_ = factors
 
         X_hat = tl.tucker_to_tensor(self.factors_)

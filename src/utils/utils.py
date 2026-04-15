@@ -32,9 +32,9 @@ def optimal_f1_threshold(
 
 def detect_anomalies_soft(res, threshold: float | None = None):
     if threshold is None:
-        # abs_res = np.abs(res)
-        # sigma = np.median(abs_res[abs_res < np.percentile(abs_res, 50)]) / 0.6745
-        sigma = np.median(np.abs(res)) / 0.6745
+        abs_res = np.abs(res)
+        sigma = np.median(abs_res[abs_res < np.percentile(abs_res, 50)]) / 0.6745
+        # sigma = np.median(np.abs(res)) / 0.6745
         # lam = 2.5 * sigma
         lam = sigma * np.sqrt(2 * np.log(res.size))
     else:
@@ -43,7 +43,7 @@ def detect_anomalies_soft(res, threshold: float | None = None):
     return E
 
 
-def global_cg_sylvester(A, B, C, max_iter=1000, tol=1e-6, verbose=False):
+def global_cg_sylvester(A, B, C, x0=None, max_iter=1000, tol=1e-6, verbose=False):
     A = sparse.csr_matrix(A)
     B = sparse.csc_matrix(B)
 
@@ -58,14 +58,16 @@ def global_cg_sylvester(A, B, C, max_iter=1000, tol=1e-6, verbose=False):
     def apply_preconditioner(R):
         return R / denom
 
-    X = np.zeros_like(C)
+    if x0 is None:
+        X = np.zeros_like(C)
+    else:
+        X = x0
 
     R = C.copy()
     Z = apply_preconditioner(R)
     P = Z.copy()
 
     rz_inner = np.vdot(R, Z).real
-    rz0 = rz_inner  # for relative stopping
 
     for k in range(max_iter):
         W = A @ P + P @ B
@@ -74,6 +76,7 @@ def global_cg_sylvester(A, B, C, max_iter=1000, tol=1e-6, verbose=False):
         if denom_cg <= 1e-16:
             # if verbose:
             #     print(f"Breakdown at iter {k}")
+
             break
 
         alpha = rz_inner / denom_cg

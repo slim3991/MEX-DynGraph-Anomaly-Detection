@@ -24,7 +24,7 @@ from utils.utils import detect_anomalies_soft
 
 
 def r_hooi(
-    X, ranks, n_iter=50, tol=1e-6, threshold: Optional[float] = None, verbose=False
+    X, ranks, n_iter=50, tol=1e-4, threshold: Optional[float] = None, verbose=False
 ):
     """
     HOOI decomposition
@@ -50,51 +50,37 @@ def r_hooi(
     x_hat = tl.decomposition.tucker(X, ranks, tol=1e-3, init="random")
     factors = x_hat.factors
     core = x_hat.core
+    del x_hat
 
-    normX = np.linalg.norm(X)
     M = X.copy()
     old_error = 1e20
     S = np.zeros_like(M)
 
     for iteration in range(n_iter):
-
         for mode in range(X.ndim):
-
-            # project tensor onto all modes except current
             projection_factors = [
                 factors[i].T if i != mode else None for i in range(X.ndim)
             ]
-
             Y = tl.tenalg.multi_mode_dot(M, projection_factors, skip=mode)
-
             Yn = tl.base.unfold(Y, mode)
-
             U, _, _ = np.linalg.svd(Yn, full_matrices=False)
-
             factors[mode] = U[:, : ranks[mode]]
 
-        # compute core tensor
         core = tl.tenalg.multi_mode_dot(M, [f.T for f in factors])
 
-        # reconstruction
-        X_hat = tl.tenalg.multi_mode_dot(core, factors)
-        residual = X - X_hat
+        if iteration == 0 or iteration % 4 == 0:
+            X_hat = tl.tenalg.multi_mode_dot(core, factors)
+            residual = X - X_hat
+            error = np.linalg.norm(residual) / tl.norm(M)
+            diff = abs(old_error - error)
+            S = detect_anomalies_soft(residual, threshold=threshold) if threshold else 0
+            M = X - S
 
-        error = np.linalg.norm(residual) / tl.norm(M)
-        diff = abs(old_error - error)
-
-        S = detect_anomalies_soft(residual)
-
-        M = X - S
-
-        if verbose and iteration % 10 == 0:
-            print("diff: ", diff)
-            print("iteration: ", iteration)
-        if diff < tol:
-            if verbose:
-                print(f"reached tol")
-            break
-        old_error = error
+            error = np.linalg.norm(residual)
+            diff = abs(old_error - error)
+            if iteration > 0 and diff < tol:
+                break
+            old_error = error
 
     return (core, factors), S
 

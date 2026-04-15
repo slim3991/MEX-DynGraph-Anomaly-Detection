@@ -3,7 +3,7 @@ import tensorly as tl
 from typing import Optional, Protocol, Sequence
 from sklearn.base import BaseEstimator, TransformerMixin, check_is_fitted
 
-from models.implementations.robust_cp import robust_cp
+from models.implementations.robust_cp import cp_als_robust, robust_cp
 from utils.utils import optimal_f1_threshold
 
 
@@ -22,10 +22,12 @@ class MyRCPTenDecomp(BaseEstimator, TransformerMixin):
         rank: int = 5,
         threshold: Optional[float] = None,
         local_threshold: Optional[float] = None,
+        tol: float = 1e-6,
     ):
         self.rank = rank
         self.local_threshold = local_threshold
         self.threshold = threshold
+        self.tol = tol
 
         # Initializing learned parameters to None
         self.threshold_ = None
@@ -34,14 +36,14 @@ class MyRCPTenDecomp(BaseEstimator, TransformerMixin):
 
     @property
     def name(self):
-        return "robust CP"
+        return "Robust CP"
 
     def fit(self, X: Tensor, y: Optional[Tensor] = None):
         """
         Fits the Robust CP decomposition and learns the classification threshold.
         """
-        factors, _ = robust_cp(
-            X, rank=self.rank, init="random", threshold=self.local_threshold
+        factors, _ = cp_als_robust(
+            X, rank=self.rank, threshold=self.local_threshold, tol=self.tol
         )
 
         self.factors_ = factors

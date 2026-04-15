@@ -7,6 +7,7 @@ import numpy as np
 import subprocess
 from dataclasses import asdict
 from typing import Callable, Any
+from models.GRTucker import MyGRTuckerDecomp
 from utils.datasets import create_event_dataset_train, create_spike_dataset_train
 from utils.metrics import Metrics, compute_metrics_with_threshold
 from models import MyGRTenDecomp
@@ -159,18 +160,61 @@ def run_tensor_experiment(
 #################################################################################
 
 
-def grten_builder(trial, T):
+def grTucker_builder(trial, T):
     trial_params = {
-        "rank": trial.suggest_int("rank", 1, 20),
+        "rank_0": trial.suggest_int("rank_0", 7, 20),
+        "rank_1": trial.suggest_int("rank_1", 7, 20),
+        "rank_2": trial.suggest_int("rank_2", 7, 20),
         "lambda_0": trial.suggest_float("lambda_0", 1e-4, 1e2, log=True),
         "lambda_1": trial.suggest_float("lambda_1", 1e-4, 1e2, log=True),
         "lambda_2": trial.suggest_float("lambda_2", 1e-4, 1e2, log=True),
         "distance": trial.suggest_categorical(
             "distance", ["dot", "euclidean", "angular"]
         ),
-        "k1": trial.suggest_int("k1", 0, min(T.shape[0], 500)),
-        "k2": trial.suggest_int("k2", 0, min(T.shape[0], 500)),
-        "k3": trial.suggest_int("k3", 0, min(T.shape[0], 500)),
+        "k1": trial.suggest_int("k1", 0, min(T.shape[0], 50)),
+        "k2": trial.suggest_int("k2", 0, min(T.shape[0], 50)),
+        "k3": trial.suggest_int("k3", 0, min(T.shape[0], 50)),
+        "local_threshold": trial.suggest_float("local_threshold", 0, 3),
+    }
+
+    lambdas = [
+        trial_params["lambda_0"],
+        trial_params["lambda_1"],
+        trial_params["lambda_2"],
+    ]
+    ks = [
+        trial_params["k1"],
+        trial_params["k2"],
+        trial_params["k3"],
+    ]
+    ranks = (
+        trial_params["rank_0"],
+        trial_params["rank_1"],
+        trial_params["rank_2"],
+    )
+
+    model = MyGRTuckerDecomp(
+        rank=ranks,
+        lambdas=lambdas,
+        ks=ks,
+        local_threshold=trial_params["local_threshold"],
+        measure=trial_params["distance"],
+    )
+    return model, trial_params
+
+
+def grten_builder(trial, T):
+    trial_params = {
+        "rank": trial.suggest_int("rank", 7, 20),
+        "lambda_0": trial.suggest_float("lambda_0", 1e-4, 1e2, log=True),
+        "lambda_1": trial.suggest_float("lambda_1", 1e-4, 1e2, log=True),
+        "lambda_2": trial.suggest_float("lambda_2", 1e-4, 1e2, log=True),
+        "distance": trial.suggest_categorical(
+            "distance", ["dot", "euclidean", "angular"]
+        ),
+        "k1": trial.suggest_int("k1", 0, min(T.shape[0], 50)),
+        "k2": trial.suggest_int("k2", 0, min(T.shape[0], 50)),
+        "k3": trial.suggest_int("k3", 0, min(T.shape[0], 50)),
         "local_threshold": trial.suggest_float("local_threshold", 0, 3),
     }
 
@@ -190,6 +234,41 @@ def grten_builder(trial, T):
         lambdas=lambdas,
         ks=ks,
         local_threshold=trial_params["local_threshold"],
+        measure=trial_params["distance"],
+    )
+    return model, trial_params
+
+
+def grten_builder_no_robust(trial, T):
+    trial_params = {
+        "rank": trial.suggest_int("rank", 7, 20),
+        "lambda_0": trial.suggest_float("lambda_0", 1e-4, 1e2, log=True),
+        "lambda_1": trial.suggest_float("lambda_1", 1e-4, 1e2, log=True),
+        "lambda_2": trial.suggest_float("lambda_2", 1e-4, 1e2, log=True),
+        "distance": trial.suggest_categorical(
+            "distance", ["dot", "euclidean", "angular"]
+        ),
+        "k1": trial.suggest_int("k1", 0, min(T.shape[0], 50)),
+        "k2": trial.suggest_int("k2", 0, min(T.shape[0], 50)),
+        "k3": trial.suggest_int("k3", 0, min(T.shape[0], 50)),
+    }
+
+    lambdas = [
+        trial_params["lambda_0"],
+        trial_params["lambda_1"],
+        trial_params["lambda_2"],
+    ]
+    ks = [
+        trial_params["k1"],
+        trial_params["k2"],
+        trial_params["k3"],
+    ]
+
+    model = MyGRTenDecomp(
+        rank=trial_params["rank"],
+        lambdas=lambdas,
+        ks=ks,
+        local_threshold=0,
         measure=trial_params["distance"],
     )
     return model, trial_params
@@ -249,7 +328,21 @@ def robust_cp_builder(trial, T):
 def main():
     tag = secrets.token_hex(4)
     anomaly_type = "spikes"
+    run_tensor_experiment(
+        experiment_name="GRTucker",
+        model_name="GRTucker",
+        suggest_and_build_model=grTucker_builder,
+        anomaly_type=anomaly_type,
+        tag=tag,
+    )
 
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="GRTen no Robust",
+    #     suggest_and_build_model=grten_builder_no_robust,
+    #     anomaly_type=anomaly_type,
+    #     tag=tag,
+    # )
     # run_tensor_experiment(
     #     experiment_name="Tensor_Decomp",
     #     model_name="BasicCP",
@@ -281,14 +374,15 @@ def main():
     #     anomaly_type=anomaly_type,
     #     tag=tag,
     # )
-
-    run_tensor_experiment(
-        experiment_name="Tensor_Decomp",
-        model_name="GRTen",
-        suggest_and_build_model=grten_builder,
-        anomaly_type=anomaly_type,
-        tag=tag,
-    )
+    #
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="GRTen",
+    #     suggest_and_build_model=grten_builder,
+    #     anomaly_type=anomaly_type,
+    #     tag=tag,
+    # )
+    #
 
 
 if __name__ == "__main__":

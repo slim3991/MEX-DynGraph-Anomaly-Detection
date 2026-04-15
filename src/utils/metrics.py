@@ -45,7 +45,6 @@ class Metrics:
     tpr: float
     threshold: Optional[float]
     events_tpr: Optional[float]
-    events_score: Optional[float]
     TP: int
     FP: int
     TN: int
@@ -77,7 +76,6 @@ class Metrics:
             TN=self.TN + other.TN,
             FN=self.FN + other.FN,
             events_tpr=self._safe_add(self.events_tpr, other.events_tpr),
-            events_score=self._safe_add(self.events_tpr, other.events_tpr),
         )
 
     def __truediv__(self, n: float) -> "Metrics":
@@ -96,7 +94,6 @@ class Metrics:
             TN=self.TN / n,
             FN=self.FN / n,
             events_tpr=self._safe_div(self.events_tpr, n),
-            events_score=self._safe_div(self.events_tpr, n),
         )
 
 
@@ -118,20 +115,16 @@ def compute_metrics_with_threshold(
         threshold = np.percentile(probs, 90.0)
     y_pred = (probs > threshold).astype(int)
     event_tpr = None
-    event_score = None
 
     if events is not None:
         correct = 0
-        event_score = 0
         event_tpr = 0
         for source, dest, start, dur in events:
             end = start + dur
             event_sum = np.sum(y_pred[source, dest, start:end])
             if event_sum > 0:
                 correct += 1
-                event_score += event_sum / dur
         event_tpr = float(correct / len(events))
-        event_score /= float(len(events))
 
     # Flatten and preprocess
     probs = np.array(probs).flatten()
@@ -170,7 +163,6 @@ def compute_metrics_with_threshold(
         TN=int(tn),
         FN=int(fn),
         events_tpr=event_tpr,
-        events_score=event_score,
     )
 
 
@@ -253,10 +245,8 @@ def print_metrics(metrics: Metrics) -> None:
     print("\nConfusion Matrix:")
     print(f"TP: {metrics.TP}, FP: {metrics.FP}")
     print(f"FN: {metrics.FN}, TN: {metrics.TN}")
-    if metrics.events_score is not None and metrics.events_tpr is not None:
-        print(
-            f"Events score: {metrics.events_score:.2%}, events TPR: {metrics.events_tpr:.2%}"
-        )
+    if metrics.events_tpr is not None:
+        print(f"events TPR: {metrics.events_tpr:.2%}")
 
 
 # ============================================================

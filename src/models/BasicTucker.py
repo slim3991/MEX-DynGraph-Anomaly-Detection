@@ -16,19 +16,25 @@ class Transformer(Protocol):
 
 class MyTuckerTenDecomp(BaseEstimator, TransformerMixin):
     def __init__(
-        self, ranks: Sequence[int] = (5, 5, 5), threshold: Optional[float] = None
+        self,
+        ranks: Sequence[int] = (5, 5, 5),
+        threshold: Optional[float] = None,
+        tol=1e-6,
     ):
         self.ranks = ranks
+        self.tol = tol
         self.threshold_ = None
         self.threshold = threshold
         self.tucker_parts_ = None
 
     @property
     def name(self):
-        return "basic_tucker"
+        return "Basic Tucker"
 
     def fit(self, X: Tensor, y: Tensor):
-        self.tucker_parts_ = tl.decomposition.tucker(X, rank=self.ranks, init="random")
+        self.tucker_parts_ = tl.decomposition.tucker(
+            X, rank=self.ranks, init="random", tol=self.tol
+        )
 
         X_hat = tl.tucker_to_tensor(self.tucker_parts_)
 

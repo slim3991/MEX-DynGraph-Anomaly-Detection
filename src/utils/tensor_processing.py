@@ -191,7 +191,7 @@ def make_mode_laplacian(
     mode: int,
     k: int = 10,
     n_trees: int = 10,
-    normalize: bool = False,
+    normalize: bool = True,
     sparse: bool = True,
     measure: str = "euclidian",
 ):

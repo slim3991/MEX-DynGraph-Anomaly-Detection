@@ -14,18 +14,21 @@ type Tensor = npt.NDArray  # Simplified for clarity
 
 
 class MyCPTenDecomp(BaseEstimator, TransformerMixin):
-    def __init__(self, rank: int = 5, threshold: Optional[float] = None):
+    def __init__(self, rank: int = 5, threshold: Optional[float] = None, tol=1e-6):
         self.threshold = threshold
         self.rank = rank
         self.threshold_ = None
         self.factors = None
+        self.tol = tol
 
     @property
     def name(self):
-        return "basic_CP"
+        return "Basic CP"
 
     def fit(self, X: Tensor, y: Optional[Tensor] = None):
-        self.factors_ = tl.decomposition.parafac(X, rank=self.rank, init="random")
+        self.factors_ = tl.decomposition.parafac(
+            X, rank=self.rank, init="random", tol=self.tol
+        )
 
         X_hat = tl.cp_to_tensor(self.factors_)
 

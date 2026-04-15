@@ -10,10 +10,6 @@ from tensorly.cp_tensor import unfolding_dot_khatri_rao
 from utils.tensor_processing import make_mode_laplacian
 from utils.utils import detect_anomalies_soft, global_cg_sylvester, optimal_f1_threshold
 
-# Assuming these are available in your local environment
-# from models.implementations.lap_reg_cp import graph_regularized_als
-# from utils.tensor_processing import make_mode_laplacian
-# from utils.utils import detect_anomalies_soft, global_cg_sylvester, optimal_f1_threshold
 
 type Tensor = tl.tensor | npt.NDArray
 
@@ -30,6 +26,7 @@ class MyGRTenDecomp(BaseEstimator, TransformerMixin):
         measure: Literal[
             "angular", "euclidean", "manhattan", "hamming", "dot"
         ] = "euclidean",
+        tol=1e-6,
     ):
         self.rank = rank
         self.lambdas = lambdas
@@ -38,6 +35,7 @@ class MyGRTenDecomp(BaseEstimator, TransformerMixin):
         self.recompute_laps = recompute_laps
         self.measure = measure
         self.threshold = threshold
+        self.tol = tol
 
         # Learned attributes
         self.threshold_ = None
@@ -45,9 +43,11 @@ class MyGRTenDecomp(BaseEstimator, TransformerMixin):
         self.laps_ = None
         self.E_ = None
 
+    @property
+    def name(self):
+        return "GRRCP"
+
     def fit(self, X: Tensor, y: Optional[Tensor] = None):
-        if (self.ks is None) and (self.laps is None):
-            raise ValueError("One of 'ks' or 'laps' must be provided.")
 
         # Pass recompute parameters into the ALS function
         factors, self.E_ = graph_regularized_als(
@@ -57,6 +57,7 @@ class MyGRTenDecomp(BaseEstimator, TransformerMixin):
             threshold=self.local_threshold,
             ks=self.ks,
             measure=self.measure,
+            tol=self.tol,
         )
 
         self.X_hat_ = tl.cp_to_tensor(factors)
@@ -78,62 +79,101 @@ class MyGRTenDecomp(BaseEstimator, TransformerMixin):
 def graph_regularized_als(
     tensor,
     rank,
+    ks,
+    measure,
     lmbda=(0.1, 0.1, 0.1),
     n_iter=20,
-    verbose=False,
+    tol=1e-6,
     threshold=None,
-    ks: Optional[Sequence[int]] = None,
-    measure="euclidean",
+    verbose=False,
 ):
+
+    # Initial CP Decomposition
     weights, factors = tl.decomposition.parafac(
-        tensor, rank=rank, n_iter_max=10, init="random"
+        tensor, rank=rank, tol=tol, init="random"
     )
 
-    M = tensor.copy()
-    E = np.zeros_like(M)
-    if ks is None:
-        ks = [0] * 3
-    laps = [
+    # make Laplacians
+    laps: List[Optional[npt.NDArray]] = [
         (
-            make_mode_laplacian(tensor=tensor, k=ks[i], mode=i, measure=measure)
-            if ks[i] != 0
-            else None
-        )
-        for i in range(3)
+            None
+            if ks[0] is None
+            else make_mode_laplacian(tensor, mode=0, k=ks[0], measure=measure)
+            * lmbda[0]
+        ),
+        (
+            None
+            if ks[0] is None
+            else make_mode_laplacian(tensor, mode=1, k=ks[1], measure=measure)
+            * lmbda[1]
+        ),
+        (
+            None
+            if ks[0] is None
+            else make_mode_laplacian(tensor, mode=2, k=ks[2], measure=measure)
+            * lmbda[2]
+        ),
     ]
 
+    M = tensor.copy()
     old_err = 1e10
-    tol = 1e-4
-
     for i in range(n_iter):
-        if verbose:
-            print(f"Iteration {i}...")
-
-        # Update factors A (0), B (1), C (2)
         for mode in range(3):
+            # 1. Setup Sylvester components
             idx = [m for m in range(3) if m != mode]
-            G1 = tl.dot(factors[idx[0]].T, factors[idx[0]])
-            G2 = tl.dot(factors[idx[1]].T, factors[idx[1]])
+            G1 = np.dot(factors[idx[0]].T, factors[idx[0]])
+            G2 = np.dot(factors[idx[1]].T, factors[idx[1]])
 
-            S = G1 * G2
-            S = S * (weights[:, None] * weights[None, :])
+            S = G1 * G2 * (weights[:, None] * weights[None, :])
 
             mttkrp = unfolding_dot_khatri_rao(M, (weights, factors), mode=mode)
 
+            # 2. Solve the System
             if laps[mode] is None:
-                eps = 1e-8
-                factors[mode] = np.linalg.solve(S + eps * np.eye(rank), mttkrp.T).T
+                # Standard ALS step
+                factors[mode] = np.linalg.solve(S + 1e-8 * np.eye(rank), mttkrp.T).T
             else:
-                factors[mode] = global_cg_sylvester(
-                    lmbda[mode] * laps[mode],
-                    S,
-                    mttkrp,
-                    max_iter=1000,
-                    verbose=verbose,
-                    tol=1e-4,
-                )
+                # --- INLINED GLOBAL CG SYLVESTER ---
+                X = factors[mode]  # Warm start from previous iter
 
-        # Normalize factors
+                # Preconditioner setup (Diagonal of Sylvester Operator)
+                dA = laps[mode].diagonal()
+                dB = S.diagonal()
+                denom_pre = dA[:, None] + dB[None, :]
+                denom_pre[denom_pre == 0] = 1e-12
+
+                # Initial Residual R = C - (AX + XB)
+                # Note: AX is L @ X, XB is X @ S
+                R = mttkrp - (laps[mode] @ X + X @ S)
+                Z = R / denom_pre
+                P = Z.copy()
+
+                rz_inner = np.vdot(R, Z).real
+
+                # Inner CG iterations
+                for _ in range(50):
+                    W = laps[mode] @ P + P @ S  # Apply Sylvester Operator
+
+                    denom_cg = np.vdot(P, W).real
+                    if denom_cg <= 1e-16:
+                        break
+
+                    alpha = rz_inner / denom_cg
+                    X += alpha * P
+                    R -= alpha * W
+
+                    # Convergence check
+                    if np.vdot(R, R).real <= (1e-5**2) * np.vdot(mttkrp, mttkrp).real:
+                        break
+
+                    Z = R / denom_pre
+                    rz_new = np.vdot(R, Z).real
+                    P = Z + (rz_new / rz_inner) * P
+                    rz_inner = rz_new
+
+                factors[mode] = X
+
+        # 3. Normalization
         for r in range(rank):
             norm = 1.0
             for mode in range(3):
@@ -142,21 +182,21 @@ def graph_regularized_als(
                 norm *= col_norm
             weights[r] *= norm
 
-        # Update Anomaly Tensor E and Denoised Tensor M
-        res = tensor - tl.cp_to_tensor((weights, factors))
-        if threshold != 0:
+        if i == 0 or i % 4 == 0:
+            X_tensor = tl.cp_to_tensor((weights, factors))
+            res = tensor - X_tensor
+
+            # Only update S after initial burn-in to stabilize factors
             E = detect_anomalies_soft(res, threshold=threshold)
             M = tensor - E
 
-        err = np.linalg.norm(res)
-        delta = np.abs(err - old_err) / (old_err + 1e-12)
+            err = np.linalg.norm(res)
+            delta = np.abs(err - old_err) / (old_err + 1e-12)
+            if verbose:
+                print(f"Iter {i}, Error: {err:.4f}, Delta: {delta:.6f}")
 
-        if verbose:
-            print(f"Iteration {i}, Reconstruction Error: {err:.6f}, Delta: {delta:.6f}")
+            if delta < tol:
+                break
+            old_err = err
 
-        if delta < tol:
-            break
-
-        old_err = err
-
-    return (weights, factors), E
+    return (weights, factors), (tensor - tl.cp_to_tensor((weights, factors)))

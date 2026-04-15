@@ -47,7 +47,6 @@ def metric_latex(df):
         "metrics.recall",
         "metrics.precision",
         "metrics.events_tpr",
-        "metrics.events_score",
     ]
 
     # Keep only columns that exist AND have at least one non-null value
@@ -78,7 +77,7 @@ def metric_latex(df):
 
 
 def main():
-    tag = "32775a13"
+    tag = "bd226d7c"
     df = mlflow.search_runs(
         filter_string=f"tags.eval_run = '{tag}' AND metrics.f1 >=0",
         search_all_experiments=True,

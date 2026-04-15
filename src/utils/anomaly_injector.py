@@ -75,7 +75,7 @@ def inject_random_shapes(
     nx, ny, nt = T.shape
     L = np.zeros_like(T, dtype=np.bool)
     events_list = []
-    shapes = ("ramp", "gaussian", "step")
+    shapes = ["step"]
 
     for _ in range(n_shapes):
         source, dest = np.random.randint(0, 11, size=2)

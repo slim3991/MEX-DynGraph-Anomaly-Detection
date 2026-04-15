@@ -9,6 +9,7 @@ from models.GRTenDecomp import MyGRTenDecomp
 from models.RobustCp import MyRCPTenDecomp
 from models.implementations.lap_reg_cp import graph_regularized_als, estimate_from_laps
 from utils.anomaly_injector import inject_random_spikes_normal
+from utils.metrics import compute_metrics_with_optimal_threshold
 from utils.tensor_processing import (
     de_anomalize_tensor,
     make_mode_knn,
@@ -29,22 +30,24 @@ source, dest = np.random.randint(0, 11), np.random.randint(0, 11)
 # source, dest = 5, 8
 
 T = preprocess(T, 20, 96, 0.5)
-T, L = inject_random_spikes_normal(T, 10)
+T, L = inject_random_spikes_normal(T, 5, 1000)
 
 
 X_hat = MyGRTenDecomp(
     rank=10,
-    ks=(5, 10, 9),
-    lambdas=(1.3, 0.002, 0.001),
-    local_threshold=0.7,
-    measure="euclidean",
+    lambdas=(0.03, 0.03, 0.03),
+    ks=(5, 5, 60),
+    measure="dot",
+    local_threshold=0,
+    threshold=1.9,
 ).fit_transform(T, L)
-x_rcp = MyRCPTenDecomp(rank=10, local_threshold=0.7).fit_transform(T, L)
 
+X_hat_cp = tl.cp_to_tensor(tl.decomposition.CP(rank=10).fit_transform(T))
 
-plt.plot(T[source, dest, :], alpha=0.5)
-plt.plot(X_hat[source, dest, :])
-plt.plot(x_rcp[source, dest, :])
+plt.plot(L[source, dest, :], alpha=0.5)
+plt.plot((X_hat_cp[source, dest, :]), label="regular")
+plt.plot((X_hat[source, dest, :]), label="graph")
+plt.legend()
 plt.show()
 exit()
 
@@ -87,9 +90,12 @@ def find_laps():
 
 def plot_regualrizaton_tensor():
     laps = []
-    laps.append(make_mode_laplacian(T, mode=0, k=60, measure="euclidean") * (-4022))
-    laps.append(make_mode_laplacian(T, mode=1, k=24, measure="euclidean") * (-2052))
-    laps.append(make_mode_laplacian(T, mode=2, k=333, measure="euclidean") * (-447))
+
+        lambdas=(46, 0.001, 0.04),
+        ks=(8, 5, 4),
+    laps.append(make_mode_laplacian(T, mode=0, k=8, measure="euclidean") * (46))
+    laps.append(make_mode_laplacian(T, mode=1, k=5, measure="euclidean") * (0.001))
+    laps.append(make_mode_laplacian(T, mode=2, k=4, measure="euclidean") * (0.04))
 
     factors = estimate_from_laps(rank=11, laps=laps, mode_shapes=(0, 1, 2))
     x_hat = tl.cp_to_tensor(factors)

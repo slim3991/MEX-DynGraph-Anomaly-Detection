@@ -14,6 +14,7 @@ import mlflow
 from tqdm import tqdm
 import numpy.typing as npt
 
+from models.GRTucker import MyGRTuckerDecomp
 from utils.metrics import compute_metrics_with_threshold, print_metrics
 from utils.datasets import (
     create_event_dataset_train,
@@ -28,36 +29,43 @@ dataset_fetch_func = Callable[[], Tuple[npt.NDArray, npt.NDArray, Optional[list]
 def main():
     models = [
         MyCPTenDecomp(
-            rank=7,
+            rank=14,
             threshold=0.7,
         ),
         MyTuckerTenDecomp(
-            ranks=(7, 3, 20),
-            threshold=0.76,
+            ranks=(9, 10, 4),
+            threshold=0.42,
         ),
         MyRCPTenDecomp(
-            rank=20,
-            local_threshold=0.02,
-            threshold=0.5,
+            rank=14,
+            local_threshold=1.3,
+            threshold=0.8,
         ),
         MyRHOOITenDecomp(
-            ranks=(8, 10, 10),
-            local_threshold=0.03,
-            threshold=0.4,
+            ranks=(7, 9, 6),
+            local_threshold=0.6,
+            threshold=0.98,
         ),
         MyGRTenDecomp(
-            rank=15,
-            lambdas=(0.6, 0.01, 1.1),
-            ks=(5, 1, 4),
-            laps=None,
-            measure="angular",
-            local_threshold=1.8,
-            threshold=0.31,
+            rank=20,
+            lambdas=(46, 0.001, 0.04),
+            ks=(8, 5, 4),
+            measure="euclidean",
+            local_threshold=2.9,
+            threshold=0.6,
+        ),
+        MyGRTuckerDecomp(
+            rank=(12, 17, 20),
+            lambdas=(0.0096, 0.56, 0.00049),
+            ks=(0, 1, 1),
+            measure="euclidean",
+            local_threshold=2.6,
+            threshold=0.6,
         ),
     ]
     tag = secrets.token_hex(4)
     tag = {"eval_run": tag}
-    anomaly_type = "events"
+    anomaly_type = "spikes"
     train_test = "train"
 
     mlflow.set_experiment(f"Evaluate Models")
