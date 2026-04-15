@@ -212,3 +212,4 @@ data/
 mlruns/
 *.db
 archive/   
+figures/
