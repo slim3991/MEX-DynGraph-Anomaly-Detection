@@ -103,6 +103,7 @@ def run_tensor_experiment(
             for _ in range(n):
                 T, L, events, data_params = data_fetch_func()
                 model, trial_params = suggest_and_build_model(trial, T)
+                model.tol = 1e-4
 
                 trial_params["anomaly_type"] = anomaly_type
                 mlflow.log_params(
@@ -164,9 +165,9 @@ def run_tensor_experiment(
 
 def grTucker_builder_no_robust(trial, T):
     trial_params = {
-        "rank_0": trial.suggest_int("rank_0", 7, 20),
-        "rank_1": trial.suggest_int("rank_1", 7, 20),
-        "rank_2": trial.suggest_int("rank_2", 7, 20),
+        "rank_0": trial.suggest_int("rank_0", 7, 12),
+        "rank_1": trial.suggest_int("rank_1", 7, 12),
+        "rank_2": trial.suggest_int("rank_2", 7, 30),
         "lambda_0": trial.suggest_float("lambda_0", 1e-4, 1e2, log=True),
         "lambda_1": trial.suggest_float("lambda_1", 1e-4, 1e2, log=True),
         "lambda_2": trial.suggest_float("lambda_2", 1e-4, 1e2, log=True),
@@ -174,8 +175,8 @@ def grTucker_builder_no_robust(trial, T):
             "distance", ["dot", "euclidean", "angular"]
         ),
         "k1": trial.suggest_int("k1", 0, min(T.shape[0], 50)),
-        "k2": trial.suggest_int("k2", 0, min(T.shape[0], 50)),
-        "k3": trial.suggest_int("k3", 0, min(T.shape[0], 50)),
+        "k2": trial.suggest_int("k2", 0, min(T.shape[1], 50)),
+        "k3": trial.suggest_int("k3", 0, min(T.shape[2], 200)),
     }
 
     lambdas = [
@@ -207,18 +208,18 @@ def grTucker_builder_no_robust(trial, T):
 
 def grTucker_builder(trial, T):
     trial_params = {
-        "rank_0": trial.suggest_int("rank_0", 7, 20),
-        "rank_1": trial.suggest_int("rank_1", 7, 20),
-        "rank_2": trial.suggest_int("rank_2", 7, 20),
-        "lambda_0": trial.suggest_float("lambda_0", 1e-4, 1e2, log=True),
-        "lambda_1": trial.suggest_float("lambda_1", 1e-4, 1e2, log=True),
-        "lambda_2": trial.suggest_float("lambda_2", 1e-4, 1e2, log=True),
+        "rank_0": trial.suggest_int("rank_0", 7, 13),
+        "rank_1": trial.suggest_int("rank_1", 7, 13),
+        "rank_2": trial.suggest_int("rank_2", 7, 30),
+        "lambda_0": trial.suggest_float("lambda_0", 1e-4, 1e4),
+        "lambda_1": trial.suggest_float("lambda_1", 1e-4, 1e4),
+        "lambda_2": trial.suggest_float("lambda_2", 1e-4, 1e4),
         "distance": trial.suggest_categorical(
             "distance", ["dot", "euclidean", "angular"]
         ),
         "k1": trial.suggest_int("k1", 0, min(T.shape[0], 50)),
-        "k2": trial.suggest_int("k2", 0, min(T.shape[0], 50)),
-        "k3": trial.suggest_int("k3", 0, min(T.shape[0], 50)),
+        "k2": trial.suggest_int("k2", 0, min(T.shape[1], 50)),
+        "k3": trial.suggest_int("k3", 0, min(T.shape[2], 200)),
         "local_threshold": trial.suggest_float("local_threshold", 0, 3),
     }
 
@@ -251,16 +252,16 @@ def grTucker_builder(trial, T):
 
 def grten_builder(trial, T):
     trial_params = {
-        "rank": trial.suggest_int("rank", 7, 20),
-        "lambda_0": trial.suggest_float("lambda_0", 1e-4, 1e2, log=True),
-        "lambda_1": trial.suggest_float("lambda_1", 1e-4, 1e2, log=True),
-        "lambda_2": trial.suggest_float("lambda_2", 1e-4, 1e2, log=True),
+        "rank": trial.suggest_int("rank", 7, 30),
+        "lambda_0": trial.suggest_float("lambda_0", 1e-4, 1e4),
+        "lambda_1": trial.suggest_float("lambda_1", 1e-4, 1e4),
+        "lambda_2": trial.suggest_float("lambda_2", 1e-4, 1e4),
         "distance": trial.suggest_categorical(
             "distance", ["dot", "euclidean", "angular"]
         ),
         "k1": trial.suggest_int("k1", 0, min(T.shape[0], 50)),
-        "k2": trial.suggest_int("k2", 0, min(T.shape[0], 50)),
-        "k3": trial.suggest_int("k3", 0, min(T.shape[0], 50)),
+        "k2": trial.suggest_int("k2", 0, min(T.shape[1], 50)),
+        "k3": trial.suggest_int("k3", 0, min(T.shape[2], 200)),
         "local_threshold": trial.suggest_float("local_threshold", 0, 3),
     }
 
@@ -296,8 +297,8 @@ def grten_builder_no_robust(trial, T):
             "distance", ["dot", "euclidean", "angular"]
         ),
         "k1": trial.suggest_int("k1", 0, min(T.shape[0], 50)),
-        "k2": trial.suggest_int("k2", 0, min(T.shape[0], 50)),
-        "k3": trial.suggest_int("k3", 0, min(T.shape[0], 50)),
+        "k2": trial.suggest_int("k2", 0, min(T.shape[1], 50)),
+        "k3": trial.suggest_int("k3", 0, min(T.shape[2], 200)),
     }
 
     lambdas = [
@@ -373,7 +374,7 @@ def robust_cp_builder(trial, T):
 
 def main():
     tag = secrets.token_hex(4)
-    anomaly_type = "events"
+    anomaly_type = "spikes"
     run_tensor_experiment(
         experiment_name="Tensor_Decomp",
         model_name="GRTucker",
@@ -382,20 +383,20 @@ def main():
         tag=tag,
     )
 
-    run_tensor_experiment(
-        experiment_name="Tensor_Decomp",
-        model_name="GRTucker_no_robust",
-        suggest_and_build_model=grTucker_builder_no_robust,
-        anomaly_type=anomaly_type,
-        tag=tag,
-    )
-    run_tensor_experiment(
-        experiment_name="Tensor_Decomp",
-        model_name="GRTen no Robust",
-        suggest_and_build_model=grten_builder_no_robust,
-        anomaly_type=anomaly_type,
-        tag=tag,
-    )
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="GRTucker_no_robust",
+    #     suggest_and_build_model=grTucker_builder_no_robust,
+    #     anomaly_type=anomaly_type,
+    #     tag=tag,
+    # )
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="GRTen no Robust",
+    #     suggest_and_build_model=grten_builder_no_robust,
+    #     anomaly_type=anomaly_type,
+    #     tag=tag,
+    # )
     run_tensor_experiment(
         experiment_name="Tensor_Decomp",
         model_name="GRTen",
@@ -404,36 +405,36 @@ def main():
         tag=tag,
     )
 
-    run_tensor_experiment(
-        experiment_name="Tensor_Decomp",
-        model_name="Robust CP",
-        suggest_and_build_model=robust_cp_builder,
-        anomaly_type=anomaly_type,
-        tag=tag,
-    )
-
-    run_tensor_experiment(
-        experiment_name="Tensor_Decomp",
-        model_name="RHOOI",
-        suggest_and_build_model=rhooi_builder,
-        anomaly_type=anomaly_type,
-        tag=tag,
-    )
-    run_tensor_experiment(
-        experiment_name="Tensor_Decomp",
-        model_name="BasicCP",
-        suggest_and_build_model=cp_builder,
-        anomaly_type=anomaly_type,
-        tag=tag,
-    )
-
-    run_tensor_experiment(
-        experiment_name="Tensor_Decomp",
-        model_name="Basic Tucker",
-        suggest_and_build_model=tucker_builder,
-        anomaly_type=anomaly_type,
-        tag=tag,
-    )
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="Robust CP",
+    #     suggest_and_build_model=robust_cp_builder,
+    #     anomaly_type=anomaly_type,
+    #     tag=tag,
+    # )
+    #
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="RHOOI",
+    #     suggest_and_build_model=rhooi_builder,
+    #     anomaly_type=anomaly_type,
+    #     tag=tag,
+    # )
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="BasicCP",
+    #     suggest_and_build_model=cp_builder,
+    #     anomaly_type=anomaly_type,
+    #     tag=tag,
+    # )
+    #
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="Basic Tucker",
+    #     suggest_and_build_model=tucker_builder,
+    #     anomaly_type=anomaly_type,
+    #     tag=tag,
+    # )
 
 
 if __name__ == "__main__":

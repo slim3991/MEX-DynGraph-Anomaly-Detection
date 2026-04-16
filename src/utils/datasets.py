@@ -11,11 +11,11 @@ import numpy as np
 def get_test_dataset() -> Tuple[npt.NDArray, dict]:
     T = np.load("data/abiline_ten.npy").astpye("float64")
     start = 15000
-    end = start + 7000
+    end = start + 4500
     T = T[:, :, start:end]
     preprocess_rank = 20
     keep_percentile = 95
-    alpha = 1.1
+    alpha = 0.4
     T = preprocess(
         T, rank=preprocess_rank, keep_percentile=keep_percentile, alpha=alpha
     )
@@ -33,11 +33,11 @@ def get_test_dataset() -> Tuple[npt.NDArray, dict]:
 def get_train_dataset() -> Tuple[npt.NDArray, dict]:
     T = np.load("data/abiline_ten.npy").astype("float64")
     start = 0
-    end = 7000
+    end = 4500
     T = T[:, :, start:end]
     preprocess_rank = 20
     keep_percentile = 95
-    alpha = 1.1
+    alpha = 0.4
     T = preprocess(
         T, rank=preprocess_rank, keep_percentile=keep_percentile, alpha=alpha
     )
@@ -73,7 +73,7 @@ def create_event_dataset_train() -> Tuple[npt.NDArray, npt.NDArray, list, dict]:
         "start_max": 4000,
         "min_duration": 10,
         "max_duration": 50,
-        "n_shapes": 10,
+        "n_shapes": 100,
         "amplitude_factor": 6,
     }
     T, L, events = inject_random_shapes(T, **params)

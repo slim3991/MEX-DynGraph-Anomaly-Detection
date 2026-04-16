@@ -6,9 +6,10 @@ import tensorly as tl
 import optuna
 
 from models.GRTenDecomp import MyGRTenDecomp
+from models.GRTucker import MyGRTuckerDecomp
 from models.RobustCp import MyRCPTenDecomp
-from models.implementations.lap_reg_cp import graph_regularized_als, estimate_from_laps
 from utils.anomaly_injector import inject_random_spikes_normal
+from utils.datasets import create_event_dataset_train, create_spike_dataset_train
 from utils.metrics import compute_metrics_with_optimal_threshold
 from utils.tensor_processing import (
     de_anomalize_tensor,
@@ -20,31 +21,38 @@ from utils.tensor_processing import (
 
 
 T = np.load("data/abiline_ten.npy")
-T = T[:, :, :7000]
+T = T[:, :, :4000]
 # T = T[:, :, 10_000:15_000]
-for i, j in product(range(12), repeat=2):
-    T[i, j, :] = normalize_tensor(T[i, j, :], "minmax")
+# for i, j in product(range(12), repeat=2):
+#     T[i, j, :] = normalize_tensor(T[i, j, :], "minmax")
 
 # T = normalize_tensor(T, "minmax")
 source, dest = np.random.randint(0, 11), np.random.randint(0, 11)
 # source, dest = 5, 8
 
-T = preprocess(T, 20, 96, 0.5)
-T, L = inject_random_spikes_normal(T, 5, 1000)
+# T, L, _, _ = create_event_dataset_train()
 
-
-X_hat = MyGRTenDecomp(
-    rank=10,
-    lambdas=(0.03, 0.03, 0.03),
-    ks=(5, 5, 60),
-    measure="dot",
-    local_threshold=0,
-    threshold=1.9,
+L = np.zeros_like(T)
+X_hat = MyGRTuckerDecomp(
+    rank=(6, 6, 19),
+    ks=[2, 10, 0],
+    lambdas=[3860 / 2, 3135 / 2, 0],
+    local_threshold=None,
+    measure="angular",
+    tol=1e-4,
 ).fit_transform(T, L)
 
-X_hat_cp = tl.cp_to_tensor(tl.decomposition.CP(rank=10).fit_transform(T))
+X_hat_cp = tl.tucker_to_tensor(
+    tl.decomposition.tucker(
+        T,
+        tol=1e-4,
+        rank=(6, 6, 19),
+        init="random",
+    )
+)
 
 plt.plot(L[source, dest, :], alpha=0.5)
+plt.plot(T[source, dest, :], alpha=0.5)
 plt.plot((X_hat_cp[source, dest, :]), label="regular")
 plt.plot((X_hat[source, dest, :]), label="graph")
 plt.legend()
@@ -91,8 +99,6 @@ def find_laps():
 def plot_regualrizaton_tensor():
     laps = []
 
-        lambdas=(46, 0.001, 0.04),
-        ks=(8, 5, 4),
     laps.append(make_mode_laplacian(T, mode=0, k=8, measure="euclidean") * (46))
     laps.append(make_mode_laplacian(T, mode=1, k=5, measure="euclidean") * (0.001))
     laps.append(make_mode_laplacian(T, mode=2, k=4, measure="euclidean") * (0.04))

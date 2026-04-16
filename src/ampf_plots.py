@@ -46,32 +46,32 @@ with open("src/model_config.yaml") as f:
     m_conf = yaml.safe_load(f)
 model_confs = m_conf["spikes_parameters"]
 models = [
-    MyCPTenDecomp(**model_confs["basic_cp"]),
-    MyTuckerTenDecomp(**model_confs["basic_tucker"]),
-    MyRCPTenDecomp(**model_confs["robust_cp"]),
+    # MyCPTenDecomp(**model_confs["basic_cp"]),
+    # MyRCPTenDecomp(**model_confs["robust_cp"]),
     MyRHOOITenDecomp(**model_confs["robust_tucker"]),
-    MyGRTenDecomp(**model_confs["GRRCP"]),
-    MyGRTenDecomp(**model_confs["GRRCP_no_robust"]),
+    # MyGRTenDecomp(**model_confs["GRRCP"]),
+    # MyGRTenDecomp(**model_confs["GRRCP_no_robust"]),
     MyGRTuckerDecomp(**model_confs["GRRTucker"]),
-    MyGRTuckerDecomp(**model_confs["GRRTucker_no_robust"]),
+    # MyGRTuckerDecomp(**model_confs["GRRTucker_no_robust"]),
+    MyTuckerTenDecomp(**model_confs["basic_tucker"]),
 ]
 
 # Range of amplitude factors to test
-amplitude_factors = [1, 3, 5, 7, 9, 12]
+amplitude_factors = [1, 2, 3, 4, 5, 6]
 
 plt.figure(figsize=(8, 6))
 
 for model in models:
     mean_aucs = []
-    model.tol = 1e-4
+    model.tol = 1e-3
 
     for ampf in amplitude_factors:
         aucs = []
 
-        for i in range(3):
+        for i in range(2):
             print(f"{model.name} | ampf={ampf} | run={i}")
 
-            T, L, _, _ = create_event_dataset_train(ampf)
+            T, L, _, _ = create_spike_dataset_train(ampf)
             T_hat = model.fit_transform(T, L)
             resids = T - T_hat
 
@@ -85,6 +85,7 @@ for model in models:
 
         # Average AUC for this amplitude
         mean_aucs.append(np.mean(aucs))
+        print("aucs: ", aucs)
 
     # Plot AUC vs amplitude
     plt.plot(amplitude_factors, mean_aucs, marker="o", label=model.name)

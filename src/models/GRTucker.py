@@ -81,7 +81,7 @@ def graph_regularized_als(
     ks,
     measure,
     lmbda=(0.1, 0.1, 0.1),
-    n_iter=20,
+    n_iter=100,
     tol=1e-6,
     threshold=None,
     verbose=False,
@@ -145,7 +145,9 @@ def graph_regularized_als(
 
             # Use your existing CG Sylvester solver here!
             # It solves: L_mode * factors[mode] + factors[mode] * S = B
-            factors[mode] = global_cg_sylvester(laps[mode], S, B, x0=factors[mode])
+            factors[mode] = global_cg_sylvester(
+                laps[mode], S, B, x0=factors[mode], tol=tol
+            )
 
             # Orthogonalize to keep Tucker stable (optional but recommended)
             factors[mode], _ = np.linalg.qr(factors[mode])

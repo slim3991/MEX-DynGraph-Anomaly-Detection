@@ -44,20 +44,20 @@ def create_event_dataset_train(ampf):
 
 with open("src/model_config.yaml") as f:
     m_conf = yaml.safe_load(f)
-model_confs = m_conf["events_parameters"]
+model_confs = m_conf["spikes_parameters"]
 models = [
-    MyCPTenDecomp(**model_confs["basic_cp"]),
+    # MyCPTenDecomp(**model_confs["basic_cp"]),
     MyTuckerTenDecomp(**model_confs["basic_tucker"]),
-    MyRCPTenDecomp(**model_confs["robust_cp"]),
+    # MyRCPTenDecomp(**model_confs["robust_cp"]),
     MyRHOOITenDecomp(**model_confs["robust_tucker"]),
-    MyGRTenDecomp(**model_confs["GRRCP"]),
-    MyGRTenDecomp(**model_confs["GRRCP_no_robust"]),
+    # MyGRTenDecomp(**model_confs["GRRCP"]),
+    # MyGRTenDecomp(**model_confs["GRRCP_no_robust"]),
     MyGRTuckerDecomp(**model_confs["GRRTucker"]),
-    MyGRTuckerDecomp(**model_confs["GRRTucker_no_robust"]),
+    # MyGRTuckerDecomp(**model_confs["GRRTucker_no_robust"]),
 ]
 
 n_runs = 5
-tols = [1e-1, 1e-2, 1e-3, 1e-4, 1e-5]
+tols = [1e-1, 1e-3, 1e-5, 1e-7, 1e-9]
 
 plt.figure(figsize=(10, 7))
 
@@ -73,7 +73,7 @@ for model in models:
             print(f"Model: {model.name} | Tol: {tol} | Run: {i+1}/{n_runs}")
 
             # Generate dataset
-            T, L, _, _ = create_event_dataset_train(6)
+            T, L, _, _ = create_spike_dataset_train(6)
 
             # Decompose
             T_hat = model.fit_transform(T, L)

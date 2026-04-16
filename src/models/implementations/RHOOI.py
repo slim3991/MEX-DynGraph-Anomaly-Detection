@@ -24,7 +24,7 @@ from utils.utils import detect_anomalies_soft
 
 
 def r_hooi(
-    X, ranks, n_iter=50, tol=1e-4, threshold: Optional[float] = None, verbose=False
+    X, ranks, n_iter=100, tol=1e-4, threshold: Optional[float] = None, verbose=False
 ):
     # Initialize factors via HOSVD
     x_hat = tl.decomposition.tucker(X, ranks, tol=1e-3, init="random")

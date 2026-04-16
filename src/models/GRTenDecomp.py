@@ -94,25 +94,14 @@ def graph_regularized_als(
     )
 
     # make Laplacians
-    laps: List[Optional[npt.NDArray]] = [
+    laps = [
         (
             None
-            if ks[0] is None
-            else make_mode_laplacian(tensor, mode=0, k=ks[0], measure=measure)
-            * lmbda[0]
-        ),
-        (
-            None
-            if ks[0] is None
-            else make_mode_laplacian(tensor, mode=1, k=ks[1], measure=measure)
-            * lmbda[1]
-        ),
-        (
-            None
-            if ks[0] is None
-            else make_mode_laplacian(tensor, mode=2, k=ks[2], measure=measure)
-            * lmbda[2]
-        ),
+            if ks[m] is None
+            else make_mode_laplacian(tensor, mode=m, k=ks[m], measure=measure)
+            * lmbda[m]
+        )
+        for m in range(3)
     ]
 
     M = tensor.copy()
@@ -172,6 +161,7 @@ def graph_regularized_als(
                     rz_inner = rz_new
 
                 factors[mode] = X
+                # print(tl.norm(X @ S) / tl.norm(laps[mode] @ X))
 
         # 3. Normalization
         for r in range(rank):
@@ -187,12 +177,13 @@ def graph_regularized_als(
             res = tensor - X_tensor
 
             # Only update S after initial burn-in to stabilize factors
-            if threshold != 0 :
+            if threshold != 0:
                 E = detect_anomalies_soft(res, threshold=threshold)
                 M = tensor - E
 
             err = np.linalg.norm(res) / tl.norm(M)
             delta = np.abs(err - old_err)
+            print(delta)
             if verbose:
                 print(f"Iter {i}, Error: {err:.4f}, Delta: {delta:.6f}")
 
