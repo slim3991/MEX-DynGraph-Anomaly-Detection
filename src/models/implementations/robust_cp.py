@@ -58,13 +58,13 @@ def cp_als_robust(tensor, rank, n_iter=50, tol=1e-4, threshold=None):
             )
             M = tensor - S
 
-            error = np.linalg.norm(residuals)
+            error = np.linalg.norm(residuals) / tl.norm(M)
             diff = abs(prev_error - error)
             if iteration > 0 and abs(prev_error - error) < tol:
                 print(f"Converged at iteration {iteration}")
                 break
 
-        prev_error = error
+            prev_error = error
 
     return (None, factors), S
 
@@ -108,12 +108,9 @@ def cp_als_robust_solve(tensor, rank, n_iter=50, tol=1e-4, threshold=None):
         if iteration == 0 or iteration % 4 == 0:
             X_tensor = tl.cp_to_tensor((None, factors))
             residuals = tensor - X_tensor
-            S = (
-                detect_anomalies_soft(residuals, threshold=threshold)
-                if threshold
-                else 0
-            )
-            M = tensor - S
+            if threshold != 0:
+                S = detect_anomalies_soft(residuals, threshold=threshold)
+                M = tensor - S
 
             error = np.linalg.norm(residuals)
             if iteration > 0 and abs(prev_error - error) < tol:

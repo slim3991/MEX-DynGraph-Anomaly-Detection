@@ -72,9 +72,9 @@ def create_event_dataset_train() -> Tuple[npt.NDArray, npt.NDArray, list, dict]:
         "start_min": 20,
         "start_max": 4000,
         "min_duration": 10,
-        "max_duration": 100,
-        "n_shapes": 20,
-        "amplitude_factor": 10,
+        "max_duration": 50,
+        "n_shapes": 10,
+        "amplitude_factor": 6,
     }
     T, L, events = inject_random_shapes(T, **params)
 
@@ -101,9 +101,9 @@ def create_event_dataset_test() -> Tuple[npt.NDArray, npt.NDArray, list, dict]:
         "start_min": 20,
         "start_max": 4000,
         "min_duration": 10,
-        "max_duration": 100,
-        "n_shapes": 20,
-        "amplitude_factor": 10,
+        "max_duration": 50,
+        "n_shapes": 10,
+        "amplitude_factor": 6,
     }
     T, L, events = inject_random_shapes(T, **params)
 

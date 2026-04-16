@@ -45,7 +45,7 @@ class MyGRTenDecomp(BaseEstimator, TransformerMixin):
 
     @property
     def name(self):
-        return "GRRCP"
+        return "GRRCP" if self.local_threshold != 0 else "GRRCP No Robust"
 
     def fit(self, X: Tensor, y: Optional[Tensor] = None):
 
@@ -187,11 +187,12 @@ def graph_regularized_als(
             res = tensor - X_tensor
 
             # Only update S after initial burn-in to stabilize factors
-            E = detect_anomalies_soft(res, threshold=threshold)
-            M = tensor - E
+            if threshold != 0 :
+                E = detect_anomalies_soft(res, threshold=threshold)
+                M = tensor - E
 
-            err = np.linalg.norm(res)
-            delta = np.abs(err - old_err) / (old_err + 1e-12)
+            err = np.linalg.norm(res) / tl.norm(M)
+            delta = np.abs(err - old_err)
             if verbose:
                 print(f"Iter {i}, Error: {err:.4f}, Delta: {delta:.6f}")
 

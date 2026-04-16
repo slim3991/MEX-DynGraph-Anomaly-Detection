@@ -76,7 +76,62 @@ def metric_latex(df):
     print(latex_code)
 
 
+import yaml
+
+
+def generate_latex_tables(yaml_content):
+    data = yaml.safe_load(yaml_content)
+    tables = []
+
+    for category, models in data.items():
+        title = category.replace("_", " ").title()
+
+        # Table Header
+        latex_str = [
+            f"% Table for {title}",
+            "\\begin{table}[h]",
+            "\\centering",
+            f"\\caption{{Model Parameters for {title}}}",
+            "\\begin{tabular}{l l l}",
+            "\\hline",
+            "\\textbf{Model} & \\textbf{Parameter} & \\textbf{Value} \\\\",
+            "\\hline",
+        ]
+
+        for model_name, params in models.items():
+            # Clean underscores for LaTeX
+            display_name = f"\\textbf{{{model_name.replace('_', ' ')}}}"
+
+            first_row = True
+            for param_key, param_value in params.items():
+                # Format model name only on the first line of its parameter block
+                model_col = display_name if first_row else ""
+
+                # Format values (lists vs single numbers)
+                val_str = str(param_value).replace("_", "\\_")
+                param_label = param_key.replace("_", " ").capitalize()
+
+                latex_str.append(f"{model_col} & {param_label} & {val_str} \\\\")
+                first_row = False
+
+            latex_str.append("\\hline")
+
+        latex_str.append("\\end{tabular}")
+        latex_str.append("\\end{table}\n")
+
+        tables.append("\n".join(latex_str))
+
+    return tables
+
+
 def main():
+    # Your data string
+
+    with open("src/model_config.yaml", "r") as f:
+        yaml_input = f.read()
+
+    print(generate_latex_tables(yaml_input)[1])
+    exit()
     tag = "bd226d7c"
     df = mlflow.search_runs(
         filter_string=f"tags.eval_run = '{tag}' AND metrics.f1 >=0",

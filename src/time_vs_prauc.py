@@ -1,4 +1,5 @@
 import numpy as np
+import yaml
 import matplotlib.pyplot as plt
 import time
 from sklearn.metrics import precision_recall_curve, auc
@@ -10,7 +11,7 @@ from models.GRTucker import MyGRTuckerDecomp
 from models.RHOOI_model import MyRHOOITenDecomp
 from models.RobustCp import MyRCPTenDecomp
 from utils.anomaly_injector import inject_random_shapes, inject_random_spikes_normal
-from utils.datasets import get_train_dataset
+from utils.datasets import create_event_dataset_train, get_train_dataset
 
 
 def create_spike_dataset_train(ampf):
@@ -26,29 +27,19 @@ def create_spike_dataset_train(ampf):
     return T, L, None, params | data_param
 
 
+with open("src/model_config.yaml") as f:
+    m_conf = yaml.safe_load(f)
+model_confs = m_conf["events_parameters"]
 models = [
-    MyCPTenDecomp(rank=14, threshold=0.7),
-    MyTuckerTenDecomp(ranks=(9, 10, 4), threshold=0.42),
-    MyRCPTenDecomp(rank=14, local_threshold=1.3, threshold=0.8),
-    MyRHOOITenDecomp(ranks=(7, 9, 6), local_threshold=0.6, threshold=0.98),
-    MyGRTenDecomp(
-        rank=20,
-        lambdas=(46, 0.001, 0.04),
-        ks=(8, 5, 4),
-        measure="euclidean",
-        local_threshold=2.9,
-        threshold=0.6,
-    ),
-    MyGRTuckerDecomp(
-        rank=(12, 17, 20),
-        lambdas=(0.0096, 0.56, 0.00049),
-        ks=(0, 1, 1),
-        measure="euclidean",
-        local_threshold=2.6,
-        threshold=0.6,
-    ),
+    MyCPTenDecomp(**model_confs["basic_cp"]),
+    MyTuckerTenDecomp(**model_confs["basic_tucker"]),
+    MyRCPTenDecomp(**model_confs["robust_cp"]),
+    MyRHOOITenDecomp(**model_confs["robust_tucker"]),
+    MyGRTenDecomp(**model_confs["GRRCP"]),
+    MyGRTenDecomp(**model_confs["GRRCP_no_robust"]),
+    MyGRTuckerDecomp(**model_confs["GRRTucker"]),
+    MyGRTuckerDecomp(**model_confs["GRRTucker_no_robust"]),
 ]
-
 plt.figure(figsize=(10, 7))
 
 colors = plt.cm.tab10(np.linspace(0, 1, len(models)))
@@ -61,7 +52,7 @@ for idx, model in enumerate(models):
     for i in range(3):
         print(f"{model.name} | run={i}")
 
-        T, L, _, _ = create_spike_dataset_train(6)
+        T, L, _, _ = create_event_dataset_train()
 
         start = time.time()
         T_hat = model.fit_transform(T, L)

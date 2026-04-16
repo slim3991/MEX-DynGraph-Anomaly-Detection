@@ -26,26 +26,6 @@ from utils.utils import detect_anomalies_soft
 def r_hooi(
     X, ranks, n_iter=50, tol=1e-4, threshold: Optional[float] = None, verbose=False
 ):
-    """
-    HOOI decomposition
-
-    Parameters
-    ----------
-    X : ndarray
-        Input tensor
-    ranks : list
-        Desired Tucker ranks
-    n_iter : int
-        Maximum iterations
-    tol : float
-        Convergence tolerance
-
-    Returns
-    -------
-    core : ndarray
-    factors : list of factor matrices
-    """
-
     # Initialize factors via HOSVD
     x_hat = tl.decomposition.tucker(X, ranks, tol=1e-3, init="random")
     factors = x_hat.factors
@@ -73,10 +53,10 @@ def r_hooi(
             residual = X - X_hat
             error = np.linalg.norm(residual) / tl.norm(M)
             diff = abs(old_error - error)
-            S = detect_anomalies_soft(residual, threshold=threshold) if threshold else 0
-            M = X - S
+            if threshold != 0:
+                S = detect_anomalies_soft(residual, threshold=threshold)
+                M = X - S
 
-            error = np.linalg.norm(residual)
             diff = abs(old_error - error)
             if iteration > 0 and diff < tol:
                 break

@@ -44,7 +44,7 @@ def create_event_dataset_train(ampf):
 
 with open("src/model_config.yaml") as f:
     m_conf = yaml.safe_load(f)
-model_confs = m_conf["spikes_parameters"]
+model_confs = m_conf["events_parameters"]
 models = [
     MyCPTenDecomp(**model_confs["basic_cp"]),
     MyTuckerTenDecomp(**model_confs["basic_tucker"]),
@@ -56,49 +56,67 @@ models = [
     MyGRTuckerDecomp(**model_confs["GRRTucker_no_robust"]),
 ]
 
-# Range of amplitude factors to test
-amplitude_factors = [1, 3, 5, 7, 9, 12]
+n_runs = 5
+tols = [1e-1, 1e-2, 1e-3, 1e-4, 1e-5]
 
-plt.figure(figsize=(8, 6))
+plt.figure(figsize=(10, 7))
 
 for model in models:
     mean_aucs = []
-    model.tol = 1e-4
+    std_aucs = []
 
-    for ampf in amplitude_factors:
-        aucs = []
+    for tol in tols:
+        run_aucs = []
+        model.tol = tol
 
-        for i in range(3):
-            print(f"{model.name} | ampf={ampf} | run={i}")
+        for i in range(n_runs):
+            print(f"Model: {model.name} | Tol: {tol} | Run: {i+1}/{n_runs}")
 
-            T, L, _, _ = create_event_dataset_train(ampf)
+            # Generate dataset
+            T, L, _, _ = create_event_dataset_train(6)
+
+            # Decompose
             T_hat = model.fit_transform(T, L)
-            resids = T - T_hat
+            resids = np.abs(T - T_hat)  # Use absolute residuals for anomaly detection
 
+            # PR AUC Calculation
             precision, recall, _ = precision_recall_curve(L.ravel(), resids.ravel())
 
-            # Sort recall before AUC
-            recall, precision = zip(*sorted(zip(recall, precision)))
+            # Ensure sorting for AUC calculation
+            sorted_indices = np.argsort(recall)
+            pr_auc = auc(recall[sorted_indices], precision[sorted_indices])
+            run_aucs.append(pr_auc)
 
-            pr_auc = auc(recall, precision)
-            aucs.append(pr_auc)
+        # Statistics for the current tolerance level
+        mean_aucs.append(np.mean(run_aucs))
+        std_aucs.append(np.std(run_aucs))
 
-        # Average AUC for this amplitude
-        mean_aucs.append(np.mean(aucs))
+    # Plotting with Error Bars
+    plt.errorbar(
+        tols,
+        mean_aucs,
+        yerr=std_aucs,
+        label=model.name,
+        marker="o",
+        capsize=5,  # Adds horizontal caps to the error bars
+        linestyle="-",  # Connects the dots
+        alpha=0.8,  # Slight transparency to see overlapping lines
+    )
 
-    # Plot AUC vs amplitude
-    plt.plot(amplitude_factors, mean_aucs, marker="o", label=model.name)
-
-# Final touches
-plt.xlabel("Amplitude Factor")
+# Formatting the plot
+plt.xscale("log")  # Explicitly set log scale for the x-axis
+plt.xlabel("Tolerance (log scale)")
 plt.ylabel("Average PR AUC")
-plt.title("Effect of Amplitude on PR AUC")
-plt.legend()
-plt.grid()
-try:
-    plt.savefig("./figures/ampfEffects.png")
-except FileNotFoundError as e:
-    print("path not found")
+plt.title("Effect of Tolerance on PR AUC (Mean ± SD)")
+plt.legend(
+    bbox_to_anchor=(1.05, 1), loc="upper left"
+)  # Move legend outside if it overlaps
+plt.grid(True, which="both", ls="-", alpha=0.5)
+plt.tight_layout()
 
+try:
+    plt.savefig("./figures/tolEffects.png")
+except FileNotFoundError:
+    print("Path not found, displaying plot instead.")
 
 plt.show()

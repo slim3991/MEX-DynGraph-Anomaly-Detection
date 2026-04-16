@@ -13,6 +13,7 @@ from typing import Callable, Dict, Literal, Optional, Protocol, Tuple
 import mlflow
 from tqdm import tqdm
 import numpy.typing as npt
+import yaml
 
 from models.GRTucker import MyGRTuckerDecomp
 from utils.metrics import compute_metrics_with_threshold, print_metrics
@@ -27,41 +28,16 @@ dataset_fetch_func = Callable[[], Tuple[npt.NDArray, npt.NDArray, Optional[list]
 
 
 def main():
+    with open("src/model_config.yaml") as f:
+        m_conf = yaml.safe_load(f)
+    model_confs = m_conf["events_parameters"]
     models = [
-        MyCPTenDecomp(
-            rank=14,
-            threshold=0.7,
-        ),
-        MyTuckerTenDecomp(
-            ranks=(9, 10, 4),
-            threshold=0.42,
-        ),
-        MyRCPTenDecomp(
-            rank=14,
-            local_threshold=1.3,
-            threshold=0.8,
-        ),
-        MyRHOOITenDecomp(
-            ranks=(7, 9, 6),
-            local_threshold=0.6,
-            threshold=0.98,
-        ),
-        MyGRTenDecomp(
-            rank=20,
-            lambdas=(46, 0.001, 0.04),
-            ks=(8, 5, 4),
-            measure="euclidean",
-            local_threshold=2.9,
-            threshold=0.6,
-        ),
-        MyGRTuckerDecomp(
-            rank=(12, 17, 20),
-            lambdas=(0.0096, 0.56, 0.00049),
-            ks=(0, 1, 1),
-            measure="euclidean",
-            local_threshold=2.6,
-            threshold=0.6,
-        ),
+        MyCPTenDecomp(**model_confs["basic_cp"]),
+        MyTuckerTenDecomp(**model_confs["basic_tucker"]),
+        MyRCPTenDecomp(**model_confs["robust_cp"]),
+        MyRHOOITenDecomp(**model_confs["robust_tucker"]),
+        MyGRTenDecomp(**model_confs["GRRCP"]),
+        MyGRTuckerDecomp(**model_confs["GRRTucker"]),
     ]
     tag = secrets.token_hex(4)
     tag = {"eval_run": tag}

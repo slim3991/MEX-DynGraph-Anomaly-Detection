@@ -1,9 +1,9 @@
-from typing import Tuple
+from typing import Tuple, List
 import yaml
 import numpy as np
 import numpy.typing as npt
 import matplotlib.pyplot as plt
-from sklearn.metrics import precision_recall_curve
+from sklearn.metrics import precision_recall_curve, auc
 
 from models.BasicCP import MyCPTenDecomp
 from models.BasicTucker import MyTuckerTenDecomp
@@ -12,9 +12,7 @@ from models.GRTucker import MyGRTuckerDecomp
 from models.RHOOI_model import MyRHOOITenDecomp
 from models.RobustCp import MyRCPTenDecomp
 from utils.anomaly_injector import inject_random_spikes_normal
-from utils.datasets import (
-    get_train_dataset,
-)
+from utils.datasets import create_event_dataset_train, get_train_dataset
 
 
 def create_spike_dataset_train(ampf) -> Tuple[npt.NDArray, npt.NDArray, None, dict]:
@@ -30,9 +28,11 @@ def create_spike_dataset_train(ampf) -> Tuple[npt.NDArray, npt.NDArray, None, di
     return T, L, None, params | data_param
 
 
+# Load configuration
 with open("src/model_config.yaml") as f:
     m_conf = yaml.safe_load(f)
-model_confs = m_conf["spikes_parameters"]
+model_confs = m_conf["events_parameters"]
+
 models = [
     MyCPTenDecomp(**model_confs["basic_cp"]),
     MyTuckerTenDecomp(**model_confs["basic_tucker"]),
@@ -44,41 +44,65 @@ models = [
     MyGRTuckerDecomp(**model_confs["GRRTucker_no_robust"]),
 ]
 
+# Containers for results
+model_names = []
+avg_aucs = []
+std_aucs = []
 
-mean_recall = np.linspace(0, 1, 100)
-
-plt.figure(figsize=(8, 6))
-
+print("Starting evaluation...")
 
 for model in models:
-    precisions = []
+    model_names.append(model.name)
+    model.tol = 1e-4
+    current_model_aucs = []
 
+    # Run multiple iterations to get an average
     for i in range(3):
-        print(i)
-        T, L, _, _ = create_spike_dataset_train(7)
+        print(f"Evaluating {model.name} - Iteration {i+1}")
+        T, L, _, _ = create_event_dataset_train()
         T_hat = model.fit_transform(T, L)
         resids = T - T_hat
 
+        # Calculate PR Curve
         precision, recall, _ = precision_recall_curve(L.ravel(), resids.ravel())
 
-        # Sort recall (just in case)
-        recall, precision = zip(*sorted(zip(recall, precision)))
+        pr_auc = auc(recall, precision)
+        current_model_aucs.append(pr_auc)
 
-        # Interpolate precision onto common recall axis
-        interp_precision = np.interp(mean_recall, recall, precision)
-        precisions.append(interp_precision)
+    avg_aucs.append(np.mean(current_model_aucs))
+    std_aucs.append(np.std(current_model_aucs))
 
-    # Average precision across runs
-    mean_precision = np.mean(precisions, axis=0)
+# --- Plotting Section ---
+plt.figure(figsize=(12, 7))
 
-    # Plot
-    plt.plot(mean_recall, mean_precision, label=model.name)
+bars = plt.bar(
+    model_names,
+    avg_aucs,
+    yerr=std_aucs,
+    capsize=5,
+    color="skyblue",
+    edgecolor="navy",
+    alpha=0.8,
+)
 
-# Final touches
-plt.xlabel("Recall")
-plt.ylabel("Precision")
-plt.title("Average Precision-Recall Curve")
-plt.legend()
-plt.grid()
+# Formatting
+plt.ylabel("Average PR-AUC", fontweight="bold")
+plt.title("Model Performance Comparison: Average PR-AUC", fontsize=14)
+plt.xticks(rotation=45, ha="right")
+plt.ylim(0, 1.1)
+plt.grid(axis="y", linestyle="--", alpha=0.7)
 
+for bar, ste in zip(bars, std_aucs):
+    yval = bar.get_height()
+
+    plt.text(
+        bar.get_x() + bar.get_width() / 2,
+        yval + ste + 0.01,
+        f"{yval:.3f}",
+        ha="center",
+        va="bottom",
+        fontsize=10,
+    )
+
+plt.tight_layout()
 plt.show()

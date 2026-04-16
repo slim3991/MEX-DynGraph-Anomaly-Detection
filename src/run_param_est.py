@@ -6,7 +6,7 @@ import optuna
 import numpy as np
 import subprocess
 from dataclasses import asdict
-from typing import Callable, Any
+from typing import Callable, Any, Literal
 from models.GRTucker import MyGRTuckerDecomp
 from utils.datasets import create_event_dataset_train, create_spike_dataset_train
 from utils.metrics import Metrics, compute_metrics_with_threshold
@@ -18,6 +18,8 @@ from models.RobustCp import MyRCPTenDecomp
 
 
 has_asked = False
+
+type anomaly_types = Literal["spikes", "events"]
 
 
 def get_git_hash():
@@ -71,7 +73,7 @@ def run_tensor_experiment(
     experiment_name: str,
     model_name: str,
     suggest_and_build_model: Callable[[optuna.Trial, Any], Any],
-    anomaly_type: str = "spike",
+    anomaly_type: Literal["events", "spikes"] = "events",
     n_trials: int = 40,
     seed: int = 42,
     tag=None,
@@ -81,13 +83,13 @@ def run_tensor_experiment(
 
     np.random.seed(seed)
     mlflow.set_experiment(experiment_name)
+    data_fetch_funcs = {
+        "spikes": create_spike_dataset_train,
+        "events": create_event_dataset_train,
+    }
 
     # Data Setup
-    data_fetch_func = (
-        create_spike_dataset_train
-        if anomaly_type == "spike"
-        else create_event_dataset_train
-    )
+    data_fetch_func = data_fetch_funcs[anomaly_type]
 
     def objective(trial: optuna.Trial):
         trial_number = trial.number
@@ -160,6 +162,49 @@ def run_tensor_experiment(
 #################################################################################
 
 
+def grTucker_builder_no_robust(trial, T):
+    trial_params = {
+        "rank_0": trial.suggest_int("rank_0", 7, 20),
+        "rank_1": trial.suggest_int("rank_1", 7, 20),
+        "rank_2": trial.suggest_int("rank_2", 7, 20),
+        "lambda_0": trial.suggest_float("lambda_0", 1e-4, 1e2, log=True),
+        "lambda_1": trial.suggest_float("lambda_1", 1e-4, 1e2, log=True),
+        "lambda_2": trial.suggest_float("lambda_2", 1e-4, 1e2, log=True),
+        "distance": trial.suggest_categorical(
+            "distance", ["dot", "euclidean", "angular"]
+        ),
+        "k1": trial.suggest_int("k1", 0, min(T.shape[0], 50)),
+        "k2": trial.suggest_int("k2", 0, min(T.shape[0], 50)),
+        "k3": trial.suggest_int("k3", 0, min(T.shape[0], 50)),
+    }
+
+    lambdas = [
+        trial_params["lambda_0"],
+        trial_params["lambda_1"],
+        trial_params["lambda_2"],
+    ]
+    ks = [
+        trial_params["k1"],
+        trial_params["k2"],
+        trial_params["k3"],
+    ]
+    ranks = (
+        trial_params["rank_0"],
+        trial_params["rank_1"],
+        trial_params["rank_2"],
+    )
+
+    model = MyGRTuckerDecomp(
+        rank=ranks,
+        lambdas=lambdas,
+        ks=ks,
+        local_threshold=0,
+        measure=trial_params["distance"],
+        tol=1e-4,
+    )
+    return model, trial_params
+
+
 def grTucker_builder(trial, T):
     trial_params = {
         "rank_0": trial.suggest_int("rank_0", 7, 20),
@@ -199,6 +244,7 @@ def grTucker_builder(trial, T):
         ks=ks,
         local_threshold=trial_params["local_threshold"],
         measure=trial_params["distance"],
+        tol=1e-4,
     )
     return model, trial_params
 
@@ -235,6 +281,7 @@ def grten_builder(trial, T):
         ks=ks,
         local_threshold=trial_params["local_threshold"],
         measure=trial_params["distance"],
+        tol=1e-4,
     )
     return model, trial_params
 
@@ -270,6 +317,7 @@ def grten_builder_no_robust(trial, T):
         ks=ks,
         local_threshold=0,
         measure=trial_params["distance"],
+        tol=1e-4,
     )
     return model, trial_params
 
@@ -278,7 +326,7 @@ def cp_builder(trial, T):
     params = {
         "rank": trial.suggest_int("rank", 1, 20),
     }
-    model = MyCPTenDecomp(rank=params["rank"])
+    model = MyCPTenDecomp(rank=params["rank"], tol=1e-4)
     return model, params
 
 
@@ -290,7 +338,7 @@ def tucker_builder(trial, T):
         "rank_2": trial.suggest_int("rank_2", 1, min(20, n3)),
     }
     ranks = (params["rank_0"], params["rank_1"], params["rank_2"])
-    model = MyTuckerTenDecomp(ranks=ranks)
+    model = MyTuckerTenDecomp(ranks=ranks, tol=1e-4)
     return model, params
 
 
@@ -305,8 +353,7 @@ def rhooi_builder(trial, T):
 
     ranks = (params["rank_0"], params["rank_1"], params["rank_2"])
     model = MyRHOOITenDecomp(
-        ranks=ranks,
-        local_threshold=params["local_threshold"],
+        ranks=ranks, local_threshold=params["local_threshold"], tol=1e-4
     )
     return model, params
 
@@ -318,8 +365,7 @@ def robust_cp_builder(trial, T):
     }
 
     model = MyRCPTenDecomp(
-        rank=params["rank"],
-        local_threshold=params["local_threshold"],
+        rank=params["rank"], local_threshold=params["local_threshold"], tol=1e-4
     )
 
     return model, params
@@ -327,62 +373,67 @@ def robust_cp_builder(trial, T):
 
 def main():
     tag = secrets.token_hex(4)
-    anomaly_type = "spikes"
+    anomaly_type = "events"
     run_tensor_experiment(
-        experiment_name="GRTucker",
+        experiment_name="Tensor_Decomp",
         model_name="GRTucker",
         suggest_and_build_model=grTucker_builder,
         anomaly_type=anomaly_type,
         tag=tag,
     )
 
-    # run_tensor_experiment(
-    #     experiment_name="Tensor_Decomp",
-    #     model_name="GRTen no Robust",
-    #     suggest_and_build_model=grten_builder_no_robust,
-    #     anomaly_type=anomaly_type,
-    #     tag=tag,
-    # )
-    # run_tensor_experiment(
-    #     experiment_name="Tensor_Decomp",
-    #     model_name="BasicCP",
-    #     suggest_and_build_model=cp_builder,
-    #     anomaly_type=anomaly_type,
-    #     tag=tag,
-    # )
-    #
-    # run_tensor_experiment(
-    #     experiment_name="Tensor_Decomp",
-    #     model_name="Basic Tucker",
-    #     suggest_and_build_model=tucker_builder,
-    #     anomaly_type=anomaly_type,
-    #     tag=tag,
-    # )
-    #
-    # run_tensor_experiment(
-    #     experiment_name="Tensor_Decomp",
-    #     model_name="Robust CP",
-    #     suggest_and_build_model=robust_cp_builder,
-    #     anomaly_type=anomaly_type,
-    #     tag=tag,
-    # )
-    #
-    # run_tensor_experiment(
-    #     experiment_name="Tensor_Decomp",
-    #     model_name="RHOOI",
-    #     suggest_and_build_model=rhooi_builder,
-    #     anomaly_type=anomaly_type,
-    #     tag=tag,
-    # )
-    #
-    # run_tensor_experiment(
-    #     experiment_name="Tensor_Decomp",
-    #     model_name="GRTen",
-    #     suggest_and_build_model=grten_builder,
-    #     anomaly_type=anomaly_type,
-    #     tag=tag,
-    # )
-    #
+    run_tensor_experiment(
+        experiment_name="Tensor_Decomp",
+        model_name="GRTucker_no_robust",
+        suggest_and_build_model=grTucker_builder_no_robust,
+        anomaly_type=anomaly_type,
+        tag=tag,
+    )
+    run_tensor_experiment(
+        experiment_name="Tensor_Decomp",
+        model_name="GRTen no Robust",
+        suggest_and_build_model=grten_builder_no_robust,
+        anomaly_type=anomaly_type,
+        tag=tag,
+    )
+    run_tensor_experiment(
+        experiment_name="Tensor_Decomp",
+        model_name="GRTen",
+        suggest_and_build_model=grten_builder,
+        anomaly_type=anomaly_type,
+        tag=tag,
+    )
+
+    run_tensor_experiment(
+        experiment_name="Tensor_Decomp",
+        model_name="Robust CP",
+        suggest_and_build_model=robust_cp_builder,
+        anomaly_type=anomaly_type,
+        tag=tag,
+    )
+
+    run_tensor_experiment(
+        experiment_name="Tensor_Decomp",
+        model_name="RHOOI",
+        suggest_and_build_model=rhooi_builder,
+        anomaly_type=anomaly_type,
+        tag=tag,
+    )
+    run_tensor_experiment(
+        experiment_name="Tensor_Decomp",
+        model_name="BasicCP",
+        suggest_and_build_model=cp_builder,
+        anomaly_type=anomaly_type,
+        tag=tag,
+    )
+
+    run_tensor_experiment(
+        experiment_name="Tensor_Decomp",
+        model_name="Basic Tucker",
+        suggest_and_build_model=tucker_builder,
+        anomaly_type=anomaly_type,
+        tag=tag,
+    )
 
 
 if __name__ == "__main__":

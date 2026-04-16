@@ -44,7 +44,7 @@ class MyGRTuckerDecomp(BaseEstimator, TransformerMixin):
 
     @property
     def name(self):
-        return "GRRTucker"
+        return "GRRTucker" if self.local_threshold != 0 else "GRRTucker No Robust"
 
     def fit(self, X: Tensor, y: Optional[Tensor] = None):
 
@@ -155,11 +155,22 @@ def graph_regularized_als(
         core = multi_mode_dot(M, [f.T for f in factors])
 
         # --- Robust Step (Outlier Separation) ---
+
         X_hat = multi_mode_dot(core, factors)
         res = tensor - X_hat
+        if i == 0 or i % 4 == 0:
+            # Only update S after initial burn-in to stabilize factors
+            if threshold != 0:
+                E = detect_anomalies_soft(res, threshold=threshold)
+                M = tensor - E
+            error = np.linalg.norm(res) / tl.norm(M)
+            diff = abs(old_err - error)
+            if i > 0 and diff < tol:
+                print(f"Converged at iteration {i}")
+                break
+
+            old_err = error
 
         # Your existing soft thresholding/anomaly detection
-        E = detect_anomalies_soft(res, threshold=threshold)
-        M = tensor - E
 
     return core, factors, E
