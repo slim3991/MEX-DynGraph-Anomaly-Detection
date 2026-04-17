@@ -133,7 +133,7 @@ def graph_regularized_als(
 
         if delta < tol:
             if verbose:
-                print("Converged.")hosvd
+                print("Converged.")
             break
 
         old_err = err

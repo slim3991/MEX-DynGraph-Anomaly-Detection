@@ -7,7 +7,7 @@ from typing import List, Literal, Optional, Sequence
 from sklearn.base import BaseEstimator, TransformerMixin, check_is_fitted
 from tensorly.cp_tensor import unfolding_dot_khatri_rao
 
-from utils.tensor_processing import make_mode_laplacian
+from utils.tensor_processing import make_interval_lap, make_mode_laplacian
 from utils.utils import detect_anomalies_soft, global_cg_sylvester, optimal_f1_threshold
 
 
@@ -101,8 +101,9 @@ def graph_regularized_als(
             else make_mode_laplacian(tensor, mode=m, k=ks[m], measure=measure)
             * lmbda[m]
         )
-        for m in range(3)
+        for m in range(2)
     ]
+    laps.append(make_interval_lap(size=tensor.shape[2], interval=12 * 24))
 
     M = tensor.copy()
     old_err = 1e10
@@ -181,14 +182,14 @@ def graph_regularized_als(
                 E = detect_anomalies_soft(res, threshold=threshold)
                 M = tensor - E
 
-            err = np.linalg.norm(res) / tl.norm(M)
-            delta = np.abs(err - old_err)
-            print(delta)
-            if verbose:
-                print(f"Iter {i}, Error: {err:.4f}, Delta: {delta:.6f}")
+        err = np.linalg.norm(res) / tl.norm(M)
+        delta = np.abs(err - old_err)
+        print(delta)
+        if verbose:
+            print(f"Iter {i}, Error: {err:.4f}, Delta: {delta:.6f}")
 
-            if delta < tol:
-                break
-            old_err = err
+        if delta < tol:
+            break
+        old_err = err
 
     return (weights, factors), (tensor - tl.cp_to_tensor((weights, factors)))

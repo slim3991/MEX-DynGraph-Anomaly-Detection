@@ -8,7 +8,7 @@ from sklearn.base import BaseEstimator, TransformerMixin, check_is_fitted
 from tensorly.cp_tensor import unfolding_dot_khatri_rao
 from tensorly.tucker_tensor import multi_mode_dot
 
-from utils.tensor_processing import make_mode_laplacian
+from utils.tensor_processing import make_interval_lap, make_mode_laplacian
 from utils.utils import detect_anomalies_soft, global_cg_sylvester, optimal_f1_threshold
 
 
@@ -86,8 +86,6 @@ def graph_regularized_als(
     threshold=None,
     verbose=False,
 ):
-
-    # Initial CP Decomposition
     t_decomp = tl.decomposition.tucker(
         tensor=tensor,
         rank=ranks,
@@ -107,17 +105,19 @@ def graph_regularized_als(
         ),
         (
             None
-            if ks[0] is None
+            if ks[1] is None
             else make_mode_laplacian(tensor, mode=1, k=ks[1], measure=measure)
             * lmbda[1]
         ),
-        (
-            None
-            if ks[0] is None
-            else make_mode_laplacian(tensor, mode=2, k=ks[2], measure=measure)
-            * lmbda[2]
-        ),
+        # (
+        #     None
+        #     if ks[0] is None
+        #     else make_mode_laplacian(tensor, mode=2, k=ks[2], measure=measure)
+        #     * lmbda[2]
+        # ),
     ]
+
+    laps.append(make_interval_lap(size=tensor.shape[2], interval=12 * 24))
 
     M = tensor.copy()
     E = np.zeros_like(M)
@@ -125,43 +125,29 @@ def graph_regularized_als(
     for i in range(n_iter):
         # --- Update Factor Matrices ---
         for mode in range(len(ranks)):
-            # Project tensor onto all OTHER factors
-            # This creates a 'partial' reconstruction to isolate the target mode
             other_modes = [m for m in range(len(ranks)) if m != mode]
             Y = multi_mode_dot(
                 M, [factors[m].T for m in other_modes], modes=other_modes
             )
 
-            # Compute the 'Tucker MTTKRP' equivalent
-            # Flatten Y in current mode and multiply by the flattened core
             Y_n = tl.unfold(Y, mode)
             G_n = tl.unfold(core, mode)
 
-            # This RHS is the target for your Sylvester solver
             B = Y_n @ G_n.T
 
-            # S is the quadratic term from the core tensor
             S = G_n @ G_n.T
 
-            # Use your existing CG Sylvester solver here!
-            # It solves: L_mode * factors[mode] + factors[mode] * S = B
             factors[mode] = global_cg_sylvester(
                 laps[mode], S, B, x0=factors[mode], tol=tol
             )
 
-            # Orthogonalize to keep Tucker stable (optional but recommended)
             factors[mode], _ = np.linalg.qr(factors[mode])
 
-        # --- Update Core Tensor ---
-        # core = M x1 A.T x2 B.T x3 C.T
         core = multi_mode_dot(M, [f.T for f in factors])
-
-        # --- Robust Step (Outlier Separation) ---
 
         X_hat = multi_mode_dot(core, factors)
         res = tensor - X_hat
         if i == 0 or i % 4 == 0:
-            # Only update S after initial burn-in to stabilize factors
             if threshold != 0:
                 E = detect_anomalies_soft(res, threshold=threshold)
                 M = tensor - E
@@ -172,7 +158,5 @@ def graph_regularized_als(
                 break
 
             old_err = error
-
-        # Your existing soft thresholding/anomaly detection
 
     return core, factors, E

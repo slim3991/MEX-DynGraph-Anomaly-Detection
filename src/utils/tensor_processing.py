@@ -1,9 +1,12 @@
 from itertools import product
+import matplotlib.pyplot as plt
 from typing import Literal
 from annoy import AnnoyIndex
 import numpy as np
+import numpy.typing as npt
+from scipy import sparse
 import tensorly as tl
-from scipy.sparse import lil_matrix, csr_matrix, diags, eye
+from scipy.sparse import lil_matrix, diags, eye
 
 type T_tensor = np.typing.NDArray | tl.tensor
 
@@ -43,16 +46,6 @@ def de_anomalize_tensor(
 
 
 def normalize_tensor(tensor, method="zscore", eps=1e-10):
-    """
-    Normalize tensor using specified method.
-    Args:
-        tensor (np.ndarray): Input tensor
-        method (str): 'zscore' or 'minmax'
-        eps (float): Small constant to avoid division by zero
-
-    Returns:
-        np.ndarray: Normalized tensor
-    """
     if method == "zscore":
         mean = np.mean(tensor)
         std = np.std(tensor)
@@ -75,26 +68,6 @@ def make_mode_knn_annoy(
     sparse: bool = True,
     distance: str = "euclidean",
 ):
-    """
-    Build a k-NN adjacency matrix from a tensor unfolding.
-
-    Parameters
-    ----------
-    tensor : ndarray or tensorly tensor
-    mode : int
-        Mode along which to unfold
-    k : int
-        Number of neighbors
-    n_trees : int
-        Number of trees for Annoy
-    sparse : bool
-        Return sparse or dense matrix
-
-    Returns
-    -------
-    W : csr_matrix or np.ndarray
-        k-NN adjacency matrix
-    """
     X = tl.base.unfold(tensor, mode=mode)
 
     n_samples, n_features = X.shape
@@ -136,9 +109,6 @@ def make_mode_knn(
     distance: str = "euclidean",
     sparse: bool = True,
 ):
-    """
-    Build a k-NN adjacency matrix from a tensor unfolding.
-    """
 
     # Select distance function
     if distance == "euclidean":
@@ -195,26 +165,6 @@ def make_mode_laplacian(
     sparse: bool = True,
     measure: str = "euclidian",
 ):
-    """
-    Construct graph Laplacian from tensor mode k-NN graph.
-
-    Parameters
-    ----------
-    tensor : ndarray or tensorly tensor
-    mode : int
-    k : int
-    n_trees : int
-    normalize : bool
-        If True, compute normalized Laplacian
-    sparse : bool
-        Return sparse or dense matrix
-
-    Returns
-    -------
-    L : csr_matrix or np.ndarray
-        Graph Laplacian
-    """
-    # Build symmetric adjacency
     W = make_mode_knn_annoy(tensor, mode=mode, k=k, sparse=True, distance=measure)
     W = 0.5 * (W + W.T)
 
@@ -236,3 +186,77 @@ def make_mode_laplacian(
     if not sparse:
         return L.toarray()
     return L
+
+
+def make_interval_lap(size: int, interval: int):
+    rows = []
+    cols = []
+
+    for i in range(size):
+        for j in range(i + interval, size, interval):
+            rows.append(i)
+            cols.append(j)
+            rows.append(j)
+            cols.append(i)
+
+    data = np.ones(len(rows))
+    A = sparse.csr_matrix((data, (rows, cols)), shape=(size, size))
+
+    d = np.array(A.sum(axis=1)).flatten()
+
+    d_inv_sqrt = np.power(d, -0.5, where=d != 0)
+    D_inv_sqrt = sparse.diags(d_inv_sqrt)
+
+    I = sparse.eye(size)
+    L_norm = I - D_inv_sqrt @ A @ D_inv_sqrt
+
+    return L_norm
+
+
+def make_gaussian_proximity_laplacian(size: int, sigma: float):
+    # 1. Define the window of influence (truncate at 4*sigma for precision)
+    window = int(np.ceil(4 * sigma))
+
+    rows = []
+    cols = []
+    data = []
+
+    for i in range(size):
+        # Only look at neighbors within the window
+        start = max(0, i - window)
+        end = min(size, i + window + 1)
+
+        for j in range(start, end):
+            if i == j:
+                continue  # Skip self-loops for Adjacency
+
+            # Gaussian formula
+            dist_sq = (i - j) ** 2
+            sim = np.exp(-dist_sq / (2 * sigma**2))
+
+            rows.append(i)
+            cols.append(j)
+            data.append(sim)
+
+    A = sparse.csr_matrix((data, (rows, cols)), shape=(size, size))
+
+    # 2. Normalize to get the Laplacian
+    d = np.array(A.sum(axis=1)).flatten()
+    # Handle isolated nodes if sigma is too small
+    d_inv_sqrt = np.power(d, -0.5, where=d != 0)
+    D_inv_sqrt = sparse.diags(d_inv_sqrt)
+
+    I = sparse.eye(size)
+    L_norm = I - D_inv_sqrt @ A @ D_inv_sqrt
+
+    return L_norm
+
+
+def test():
+    L = make_interval_lap(100, 10)
+    plt.spy(L)
+    plt.show()
+
+
+if __name__ == "__main__":
+    test()

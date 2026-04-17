@@ -8,7 +8,7 @@ import optuna
 from models.GRTenDecomp import MyGRTenDecomp
 from models.GRTucker import MyGRTuckerDecomp
 from models.RobustCp import MyRCPTenDecomp
-from utils.anomaly_injector import inject_random_spikes_normal
+from utils.anomaly_injector import inject_DDoS, inject_random_spikes_normal
 from utils.datasets import create_event_dataset_train, create_spike_dataset_train
 from utils.metrics import compute_metrics_with_optimal_threshold
 from utils.tensor_processing import (
@@ -23,30 +23,37 @@ from utils.tensor_processing import (
 T = np.load("data/abiline_ten.npy")
 T = T[:, :, :4000]
 # T = T[:, :, 10_000:15_000]
-# for i, j in product(range(12), repeat=2):
-#     T[i, j, :] = normalize_tensor(T[i, j, :], "minmax")
+for i, j in product(range(12), repeat=2):
+    T[i, j, :] = normalize_tensor(T[i, j, :], "minmax")
+T = de_anomalize_tensor(T, 20)
 
 # T = normalize_tensor(T, "minmax")
 source, dest = np.random.randint(0, 11), np.random.randint(0, 11)
 # source, dest = 5, 8
 
-# T, L, _, _ = create_event_dataset_train()
+T, L, _, _ = create_event_dataset_train()
 
-L = np.zeros_like(T)
-X_hat = MyGRTuckerDecomp(
-    rank=(6, 6, 19),
+# L = np.zeros_like(T)
+# for _ in range(100):
+#     a = np.random.randint(0, 12)
+#     T, Lp = inject_DDoS(T, duration=10, n_senders=5, amplitude_factor=10, target=a)
+#     L += Lp
+# L = np.where(L > 0, 1, 0)
+
+X_hat = MyGRTenDecomp(
+    rank=(5),
     ks=[2, 10, 0],
-    lambdas=[3860 / 2, 3135 / 2, 0],
-    local_threshold=None,
+    lambdas=[0, 0, 1e4],
+    local_threshold=0,
     measure="angular",
     tol=1e-4,
 ).fit_transform(T, L)
 
-X_hat_cp = tl.tucker_to_tensor(
-    tl.decomposition.tucker(
+X_hat_cp = tl.cp_to_tensor(
+    tl.decomposition.parafac(
         T,
         tol=1e-4,
-        rank=(6, 6, 19),
+        rank=(5),
         init="random",
     )
 )
