@@ -8,7 +8,11 @@ import subprocess
 from dataclasses import asdict
 from typing import Callable, Any, Literal
 from models.GRTucker import MyGRTuckerDecomp
-from utils.datasets import create_event_dataset_train, create_spike_dataset_train
+from utils.datasets import (
+    create_ddos_dataset_train,
+    create_event_dataset_train,
+    create_spike_dataset_train,
+)
 from utils.metrics import Metrics, compute_metrics_with_threshold
 from models import MyGRTenDecomp
 from models.BasicCP import MyCPTenDecomp
@@ -33,38 +37,6 @@ def get_git_hash():
         return "unknown"
 
 
-def check_git_status():
-    """Checks if there are uncommitted changes and warns the user."""
-    global has_asked
-    if has_asked:
-        return
-    try:
-        # --porcelain gives a script-friendly output; empty means clean
-        status = (
-            subprocess.check_output(["git", "status", "--porcelain"])
-            .decode("utf-8")
-            .strip()
-        )
-        if status:
-            print("\n" + "!" * 60)
-            print("⚠️  WARNING: UNCOMMITTED CHANGES DETECTED")
-            print("The current Git hash will NOT accurately represent this run.")
-            print("Files changed:")
-            print(status)
-            print("!" * 60 + "\n")
-
-            # Optional: Force a confirmation
-            response = input("Do you want to proceed anyway? (y/n): ")
-            if response.lower() != "y":
-                print("Aborting run. Commit your changes first!")
-                sys.exit(1)
-            has_asked = True
-        else:
-            print("✅ Git repository is clean. Proceeding...")
-    except subprocess.CalledProcessError:
-        print("❌ Error: Could not verify Git status. Is this a git repo?")
-
-
 #################################################################################
 #################################################################################
 
@@ -78,7 +50,6 @@ def run_tensor_experiment(
     seed: int = 42,
     tag=None,
 ):
-    check_git_status()
     model_tag = secrets.token_hex(4)
 
     np.random.seed(seed)
@@ -86,6 +57,7 @@ def run_tensor_experiment(
     data_fetch_funcs = {
         "spikes": create_spike_dataset_train,
         "events": create_event_dataset_train,
+        "ddos": create_ddos_dataset_train,
     }
 
     # Data Setup
@@ -165,18 +137,18 @@ def run_tensor_experiment(
 
 def grTucker_builder_no_robust(trial, T):
     trial_params = {
-        "rank_0": trial.suggest_int("rank_0", 7, 12),
-        "rank_1": trial.suggest_int("rank_1", 7, 12),
-        "rank_2": trial.suggest_int("rank_2", 7, 30),
-        "lambda_0": trial.suggest_float("lambda_0", 1e-4, 1e2, log=True),
-        "lambda_1": trial.suggest_float("lambda_1", 1e-4, 1e2, log=True),
-        "lambda_2": trial.suggest_float("lambda_2", 1e-4, 1e2, log=True),
+        "rank_0": 10,  # trial.suggest_int("rank_0", 7, 12),
+        "rank_1": 10,  # trial.suggest_int("rank_1", 7, 12),
+        "rank_2": 10,  # trial.suggest_int("rank_2", 7, 30),
+        "lambda_0": trial.suggest_float("lambda_0", 1e-4, 1e5, log=True),
+        "lambda_1": trial.suggest_float("lambda_1", 1e-4, 1e5, log=True),
+        "lambda_2": trial.suggest_float("lambda_2", 1e-4, 1e5, log=True),
         "distance": trial.suggest_categorical(
             "distance", ["dot", "euclidean", "angular"]
         ),
         "k1": trial.suggest_int("k1", 0, min(T.shape[0], 50)),
         "k2": trial.suggest_int("k2", 0, min(T.shape[1], 50)),
-        "k3": trial.suggest_int("k3", 0, min(T.shape[2], 200)),
+        "k3": 1,
     }
 
     lambdas = [
@@ -252,7 +224,7 @@ def grTucker_builder(trial, T):
 
 def grten_builder(trial, T):
     trial_params = {
-        "rank": trial.suggest_int("rank", 7, 30),
+        "rank": 10,  # trial.suggest_int("rank", 7, 30),
         "lambda_0": trial.suggest_float("lambda_0", 1e-4, 1e4),
         "lambda_1": trial.suggest_float("lambda_1", 1e-4, 1e4),
         "lambda_2": trial.suggest_float("lambda_2", 1e-4, 1e4),
@@ -261,8 +233,8 @@ def grten_builder(trial, T):
         ),
         "k1": trial.suggest_int("k1", 0, min(T.shape[0], 50)),
         "k2": trial.suggest_int("k2", 0, min(T.shape[1], 50)),
-        "k3": trial.suggest_int("k3", 0, min(T.shape[2], 200)),
-        "local_threshold": trial.suggest_float("local_threshold", 0, 3),
+        "k3": 1,  # trial.suggest_int("k3", 0, min(T.shape[2], 200)),
+        "local_threshold": None,  # trial.suggest_float("local_threshold", 0, 3),
     }
 
     lambdas = [
@@ -289,16 +261,16 @@ def grten_builder(trial, T):
 
 def grten_builder_no_robust(trial, T):
     trial_params = {
-        "rank": trial.suggest_int("rank", 7, 20),
-        "lambda_0": trial.suggest_float("lambda_0", 1e-4, 1e2, log=True),
-        "lambda_1": trial.suggest_float("lambda_1", 1e-4, 1e2, log=True),
-        "lambda_2": trial.suggest_float("lambda_2", 1e-4, 1e2, log=True),
+        "rank": 10,  # trial.suggest_int("rank", 7, 20),
+        "lambda_0": trial.suggest_float("lambda_0", 1e-2, 1e4),
+        "lambda_1": trial.suggest_float("lambda_1", 1e-2, 1e4),
+        "lambda_2": trial.suggest_float("lambda_2", 1e-2, 1e4),
         "distance": trial.suggest_categorical(
             "distance", ["dot", "euclidean", "angular"]
         ),
         "k1": trial.suggest_int("k1", 0, min(T.shape[0], 50)),
         "k2": trial.suggest_int("k2", 0, min(T.shape[1], 50)),
-        "k3": trial.suggest_int("k3", 0, min(T.shape[2], 200)),
+        "k3": 1,  # trial.suggest_int("k3", 0, min(T.shape[2], 200)),
     }
 
     lambdas = [
@@ -374,14 +346,14 @@ def robust_cp_builder(trial, T):
 
 def main():
     tag = secrets.token_hex(4)
-    anomaly_type = "spikes"
-    run_tensor_experiment(
-        experiment_name="Tensor_Decomp",
-        model_name="GRTucker",
-        suggest_and_build_model=grTucker_builder,
-        anomaly_type=anomaly_type,
-        tag=tag,
-    )
+    anomaly_type = "ddos"
+    # run_tensor_experiment(
+    #     experiment_name="Tensor_Decomp",
+    #     model_name="GRTucker",
+    #     suggest_and_build_model=grTucker_builder,
+    #     anomaly_type=anomaly_type,
+    #     tag=tag,
+    # )
 
     # run_tensor_experiment(
     #     experiment_name="Tensor_Decomp",
@@ -390,13 +362,13 @@ def main():
     #     anomaly_type=anomaly_type,
     #     tag=tag,
     # )
-    # run_tensor_experiment(
-    #     experiment_name="Tensor_Decomp",
-    #     model_name="GRTen no Robust",
-    #     suggest_and_build_model=grten_builder_no_robust,
-    #     anomaly_type=anomaly_type,
-    #     tag=tag,
-    # )
+    run_tensor_experiment(
+        experiment_name="Tensor_Decomp",
+        model_name="GRTen no Robust",
+        suggest_and_build_model=grten_builder_no_robust,
+        anomaly_type=anomaly_type,
+        tag=tag,
+    )
     run_tensor_experiment(
         experiment_name="Tensor_Decomp",
         model_name="GRTen",

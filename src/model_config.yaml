@@ -1,110 +1,25 @@
-# spikes_parameters:
-#   GRRTucker:
-#     rank: [16,11,7]
-#     ks: [11,6,5]
-#     lambdas: [0.8,0.2,0.0008]
-#     local_threshold: 1.18
-#     measure: "euclidean"
-#   GRRTucker_no_robust:
-#     rank: [20,17,8]
-#     ks: [9,8,5]
-#     lambdas: [84,0.16,0.001]
-#     local_threshold: 0
-#     measure: "euclidean"
-#   GRRCP_no_robust:
-#     rank: 15
-#     ks: [0,12,7]
-#     lambdas: [0,0.001,0.25]
-#     local_threshold: 0
-#     measure: "angular"
-#   GRRCP:
-#     rank: 18
-#     ks: [9,10,5]
-#     lambdas: [0.6,0.6,0.009]
-#     local_threshold: 1.05
-#     measure: "angular"
-#   robust_cp:
-#     rank: 14
-#     local_threshold: 0.9
-#   robust_tucker:
-#     ranks: [3,6,7]
-#     local_threshold: 2.16
-#   basic_cp:
-#     rank: 7
-#   basic_tucker:
-#     ranks: [6,7,6]
-
-
-events_parameters:
-  GRRTucker:
-    rank: [28,13,19]
-    ks: [2,10,0]
-    lambdas: [3860,3135,0]
-    local_threshold: 1.8
-    measure: "angular"
-  GRRCP:
-    rank: 20
-    ks: [1,6,8]
-    lambdas: [4374,4154,1450]
-    local_threshold: 1.4
-    measure: "angular"
-  GRRTucker_no_robust:
-    rank: [17,15,11]
-    ks: [4,1,0]
-    lambdas: [0.065, 0.2,0]
-    local_threshold: 0
-    measure: "dot"
-  GRRCP_no_robust:
-    rank: 19
-    ks: [3,0,4]
-    lambdas: [6.3, 0,0.06]
-    local_threshold: 0
-    measure: "euclidean"
-  robust_cp:
-    rank: 20
-    local_threshold: 1.4
-  robust_tucker:
-    ranks: [28,13,19]
-    local_threshold: 1.8
+ddos_parameters:
   basic_cp:
-    rank: 20
-  basic_tucker:
-    ranks: [28,13,19]
-
-
-spikes_parameters:
-  GRRTucker:
-    rank: [20,23,20]
-    ks: [7,2,0]
-    lambdas: [90,7900,0]
-    local_threshold: 2
-    measure: "euclidean"
-  GRRTucker_no_robust:
-    rank: [20,17,8]
-    ks: [9,8,5]
-    lambdas: [84,0.16,0.001]
-    local_threshold: 0
-    measure: "euclidean"
-  GRRCP_no_robust:
-    rank: 15
-    ks: [0,12,7]
-    lambdas: [0,0.001,0.25]
-    local_threshold: 0
-    measure: "angular"
-  GRRCP:
-    rank: 18
-    ks: [9,10,5]
-    lambdas: [0.6,0.6,0.009]
-    local_threshold: 1.05
-    measure: "angular"
+    rank: 10
+    tol: 0.0001
   robust_cp:
-    rank: 14
-    local_threshold: 0.9
-  robust_tucker:
-    ranks: [20,23,20]
-    local_threshold: 2
-  basic_cp:
-    rank: 7
-  basic_tucker:
-    ranks: [20,23,20]
+    rank: 10
+    tol: 0.0001
+  GRRCP_no_robust:
+    rank: 10 
+    ks: [8 ,0, 1]
+    lambdas: [90, 0, 8300]
+    local_threshold: 0
+    measure: "angular"
+    tol: 0.0001
+  GRRCP:
+    rank: 10 
+    ks: [8 ,0, 1]
+    lambdas: [90, 0, 8300]
+    measure: "angular"
+    tol: 0.0001
+
+
+
+
 

@@ -1,6 +1,7 @@
 from itertools import product
 import matplotlib.pyplot as plt
 import numpy as np
+from sklearn.metrics import auc, precision_recall_curve
 from sklearn.preprocessing import normalize
 import tensorly as tl
 import optuna
@@ -20,51 +21,65 @@ from utils.tensor_processing import (
 )
 
 
-T = np.load("data/abiline_ten.npy")
-T = T[:, :, :4000]
+Tp = np.load("data/abiline_ten.npy")
+Tp = Tp[:, :, :4000]
+
 # T = T[:, :, 10_000:15_000]
 for i, j in product(range(12), repeat=2):
-    T[i, j, :] = normalize_tensor(T[i, j, :], "minmax")
-T = de_anomalize_tensor(T, 20)
+    Tp[i, j, :] = normalize_tensor(Tp[i, j, :], "minmax")
+# T = normalize_tensor(T, "minmax")
+T = de_anomalize_tensor(Tp, 20)
 
 # T = normalize_tensor(T, "minmax")
 source, dest = np.random.randint(0, 11), np.random.randint(0, 11)
 # source, dest = 5, 8
 
-T, L, _, _ = create_event_dataset_train()
+# T, L, _, _ = create_event_dataset_train()
 
-# L = np.zeros_like(T)
-# for _ in range(100):
-#     a = np.random.randint(0, 12)
-#     T, Lp = inject_DDoS(T, duration=10, n_senders=5, amplitude_factor=10, target=a)
-#     L += Lp
-# L = np.where(L > 0, 1, 0)
+L = np.zeros_like(T)
+for _ in range(100):
+    a = np.random.randint(0, 12)
+    T, Lp = inject_DDoS(T, duration=10, n_senders=7, amplitude_factor=10, target=a)
+    L += Lp
+L = np.where(L > 0, 1, 0)
 
-X_hat = MyGRTenDecomp(
-    rank=(5),
-    ks=[2, 10, 0],
-    lambdas=[0, 0, 1e4],
-    local_threshold=0,
-    measure="angular",
-    tol=1e-4,
-).fit_transform(T, L)
+# X_hat = MyGRTenDecomp(
+#     rank=15,
+#     ks=[5, 0, 0],
+#     lambdas=[100, 0, 1000],
+#     local_threshold=None,
+#     measure="angular",
+#     tol=1e-4,
+# ).fit_transform(T, L)
+#
+# X_hat_cp = tl.cp_to_tensor(
+#     tl.decomposition.parafac(
+#         T,
+#         tol=1e-4,
+#         rank=15,
+#         init="random",
+#     )
+# )
+# res = np.abs(X_hat - T)
+# precision, recall, thresholds = precision_recall_curve(L.flatten(), res.flatten())
+# pr_auc = auc(recall, precision)
+# print("pr-auc, graph: ", pr_auc)
+# res = np.abs(X_hat_cp - T)
+# precision, recall, thresholds = precision_recall_curve(L.flatten(), res.flatten())
+# pr_auc = auc(recall, precision)
+# print("pr-auc, cp: ", pr_auc)
+#
+# print("graph: ", tl.norm(X_hat - Tp) / tl.norm(Tp))
+# print("cp: ", tl.norm(X_hat_cp - Tp) / tl.norm(Tp))
+#
 
-X_hat_cp = tl.cp_to_tensor(
-    tl.decomposition.parafac(
-        T,
-        tol=1e-4,
-        rank=(5),
-        init="random",
-    )
-)
-
-plt.plot(L[source, dest, :], alpha=0.5)
-plt.plot(T[source, dest, :], alpha=0.5)
-plt.plot((X_hat_cp[source, dest, :]), label="regular")
-plt.plot((X_hat[source, dest, :]), label="graph")
-plt.legend()
-plt.show()
-exit()
+# plt.plot(L[source, dest, :], alpha=0.5)
+# plt.plot(T[source, dest, :], alpha=0.5)
+# plt.plot((X_hat_cp[source, dest, :]), label="regular")
+# plt.plot((X_hat[source, dest, :]), label="graph")
+# plt.legend()
+# plt.show()
+# exit()
 
 # best_score =score: {best_score}, best val {best_val}")
 # best (7,9,1,3)
@@ -74,6 +89,39 @@ laps = []
 # laps.append(make_laplacian(T, mode=0, k=11))
 # laps.append(make_laplacian(T, mode=1, k=1))
 # laps.append(make_laplacian(T, mode=2, k=300))
+
+
+def find_laps():
+    def objective(trial: optuna.Trial, T):
+        param0 = trial.suggest_float(name="param0", low=0, high=10000)
+        # param1 = trial.suggest_float(name="param1", low=0, high=10000)
+        # ks0 = trial.suggest_int(name="ks0", low=0, high=10)
+        # ks1 = trial.suggest_int(name="ks1", low=0, high=5)
+        # measure = trial.suggest_categorical(
+        #     name="measure", choices=["euclidean", "angular", "dot"]
+        # )
+
+        X_hat = MyGRTenDecomp(
+            rank=10,
+            ks=[None, None, None],
+            lambdas=[0, 0, 0],
+            local_threshold=None,
+            measure="dot",
+            tol=1e-4,
+        ).fit_transform(T, L)
+        res = np.abs(X_hat - T)
+        precision, recall, _ = precision_recall_curve(L.flatten(), res.flatten())
+        pr_auc = auc(recall, precision)
+        return pr_auc
+
+    study = optuna.create_study(direction="maximize", study_name="GRT")
+    study.optimize(lambda trial: objective(trial, T), n_trials=20)
+    print("Best trial: ", study.best_trial.number, ", with value: ", study.best_value)
+    print("Best Params", study.best_params, end="\n\n")
+
+
+find_laps()
+exit()
 
 
 def find_laps():

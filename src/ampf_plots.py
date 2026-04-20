@@ -9,7 +9,11 @@ from models.GRTenDecomp import MyGRTenDecomp
 from models.GRTucker import MyGRTuckerDecomp
 from models.RHOOI_model import MyRHOOITenDecomp
 from models.RobustCp import MyRCPTenDecomp
-from utils.anomaly_injector import inject_random_shapes, inject_random_spikes_normal
+from utils.anomaly_injector import (
+    inject_DDoS,
+    inject_random_shapes,
+    inject_random_spikes_normal,
+)
 from utils.datasets import get_train_dataset
 
 
@@ -42,22 +46,39 @@ def create_event_dataset_train(ampf):
     return T, L, events, params | data_param
 
 
+def create_ddos_dataset_train(ampf):
+    T, data_param = get_train_dataset()
+    n_spikes = 1000
+    amplitude_factor = 6
+
+    L = np.zeros_like(T)
+    for _ in range(100):
+        a = np.random.randint(0, 12)
+        T, Lp = inject_DDoS(
+            T, duration=10, n_senders=7, amplitude_factor=ampf, target=a
+        )
+        L += Lp
+    L = np.where(L > 0, 1, 0)
+    params = {"amplitude_factor": amplitude_factor, "n_spikes": n_spikes}
+    return T, L, None, params | data_param
+
+
 with open("src/model_config.yaml") as f:
     m_conf = yaml.safe_load(f)
-model_confs = m_conf["spikes_parameters"]
+model_confs = m_conf["ddos_parameters"]
 models = [
-    # MyCPTenDecomp(**model_confs["basic_cp"]),
-    # MyRCPTenDecomp(**model_confs["robust_cp"]),
-    MyRHOOITenDecomp(**model_confs["robust_tucker"]),
-    # MyGRTenDecomp(**model_confs["GRRCP"]),
-    # MyGRTenDecomp(**model_confs["GRRCP_no_robust"]),
-    MyGRTuckerDecomp(**model_confs["GRRTucker"]),
+    MyGRTenDecomp(**model_confs["GRRCP"]),
+    MyGRTenDecomp(**model_confs["GRRCP_no_robust"]),
+    MyCPTenDecomp(**model_confs["basic_cp"]),
+    MyRCPTenDecomp(**model_confs["robust_cp"]),
+    # MyTuckerTenDecomp(**model_confs["basic_tucker"]),
+    # MyRHOOITenDecomp(**model_confs["robust_tucker"]),
+    # MyGRTuckerDecomp(**model_confs["GRRTucker"]),
     # MyGRTuckerDecomp(**model_confs["GRRTucker_no_robust"]),
-    MyTuckerTenDecomp(**model_confs["basic_tucker"]),
 ]
 
 # Range of amplitude factors to test
-amplitude_factors = [1, 2, 3, 4, 5, 6]
+amplitude_factors = [6, 7, 8, 9, 10, 11]
 
 plt.figure(figsize=(8, 6))
 

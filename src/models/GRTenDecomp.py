@@ -1,14 +1,19 @@
 from annoy import AnnoyIndex
 import numpy.typing as npt
 import numpy as np
+from scipy import sparse
 from scipy.sparse import diags, eye, lil_matrix
 import tensorly as tl
 from typing import List, Literal, Optional, Sequence
 from sklearn.base import BaseEstimator, TransformerMixin, check_is_fitted
 from tensorly.cp_tensor import unfolding_dot_khatri_rao
 
-from utils.tensor_processing import make_interval_lap, make_mode_laplacian
-from utils.utils import detect_anomalies_soft, global_cg_sylvester, optimal_f1_threshold
+from utils.tensor_processing import (
+    make_gaussian_proximity_laplacian,
+    make_interval_lap,
+    make_mode_laplacian,
+)
+from utils.utils import detect_anomalies_soft, optimal_f1_threshold
 
 
 type Tensor = tl.tensor | npt.NDArray
@@ -97,13 +102,20 @@ def graph_regularized_als(
     laps = [
         (
             None
-            if ks[m] is None
-            else make_mode_laplacian(tensor, mode=m, k=ks[m], measure=measure)
-            * lmbda[m]
+            if ks[m] is None or ks[m] == 0 or lmbda[m] == 0
+            else make_mode_laplacian(
+                tensor, mode=m, k=ks[m], measure=measure, normalize=False
+            )
         )
-        for m in range(2)
+        for m in range(3)
     ]
-    laps.append(make_interval_lap(size=tensor.shape[2], interval=12 * 24))
+    # laps = [(eye(tensor.shape[m], format="csr") * lmbda[m]) for m in range(3)]
+    # L = make_gaussian_proximity_laplacian(size=tensor.shape[2], sigma=10)
+    w = np.array((1, 2, 3, 2, 1))
+    w = w / np.sum(w)
+    L = make_interval_lap(size=tensor.shape[2], interval=12 * 24, weights=w)
+    laps[2] = L
+    print(lmbda)
 
     M = tensor.copy()
     old_err = 1e10
@@ -123,48 +135,14 @@ def graph_regularized_als(
                 # Standard ALS step
                 factors[mode] = np.linalg.solve(S + 1e-8 * np.eye(rank), mttkrp.T).T
             else:
-                # --- INLINED GLOBAL CG SYLVESTER ---
                 X = factors[mode]  # Warm start from previous iter
-
-                # Preconditioner setup (Diagonal of Sylvester Operator)
-                dA = laps[mode].diagonal()
-                dB = S.diagonal()
-                denom_pre = dA[:, None] + dB[None, :]
-                denom_pre[denom_pre == 0] = 1e-12
-
-                # Initial Residual R = C - (AX + XB)
-                # Note: AX is L @ X, XB is X @ S
-                R = mttkrp - (laps[mode] @ X + X @ S)
-                Z = R / denom_pre
-                P = Z.copy()
-
-                rz_inner = np.vdot(R, Z).real
-
-                # Inner CG iterations
-                for _ in range(50):
-                    W = laps[mode] @ P + P @ S  # Apply Sylvester Operator
-
-                    denom_cg = np.vdot(P, W).real
-                    if denom_cg <= 1e-16:
-                        break
-
-                    alpha = rz_inner / denom_cg
-                    X += alpha * P
-                    R -= alpha * W
-
-                    # Convergence check
-                    if np.vdot(R, R).real <= (1e-5**2) * np.vdot(mttkrp, mttkrp).real:
-                        break
-
-                    Z = R / denom_pre
-                    rz_new = np.vdot(R, Z).real
-                    P = Z + (rz_new / rz_inner) * P
-                    rz_inner = rz_new
-
+                X = global_cg_sylvester(
+                    A=lmbda[mode] * laps[mode], B=S, C=mttkrp, x0=X, verbose=False
+                )
                 factors[mode] = X
-                # print(tl.norm(X @ S) / tl.norm(laps[mode] @ X))
+                # print("ratio: ", tl.norm(lmbda[mode] * laps[mode] @ X) / tl.norm(X @ S))
 
-        # 3. Normalization
+            # 3. Normalization
         for r in range(rank):
             norm = 1.0
             for mode in range(3):
@@ -182,14 +160,77 @@ def graph_regularized_als(
                 E = detect_anomalies_soft(res, threshold=threshold)
                 M = tensor - E
 
-        err = np.linalg.norm(res) / tl.norm(M)
-        delta = np.abs(err - old_err)
-        print(delta)
-        if verbose:
-            print(f"Iter {i}, Error: {err:.4f}, Delta: {delta:.6f}")
+            err = np.linalg.norm(res) / tl.norm(M)
+            delta = np.abs(err - old_err)
+            # print(delta)
+            if verbose:
+                print(f"Iter {i}, Error: {err:.4f}, Delta: {delta:.6f}")
 
-        if delta < tol:
-            break
-        old_err = err
+            if delta < tol:
+                break
+            old_err = err
 
     return (weights, factors), (tensor - tl.cp_to_tensor((weights, factors)))
+
+
+def global_cg_sylvester(A, B, C, x0=None, max_iter=1000, tol=1e-6, verbose=False):
+    A = sparse.csr_matrix(A)
+    B = sparse.csc_matrix(B)
+
+    # Precompute diagonal preconditioner
+    dA = A.diagonal()
+    dB = B.diagonal()
+
+    # Avoid division by zero
+    denom = dA[:, None] + dB[None, :]
+    denom[denom == 0] = 1e-12
+
+    def apply_preconditioner(R):
+        return R / denom
+
+    if x0 is None:
+        X = np.zeros_like(C)
+        R = C.copy()
+    else:
+        X = x0
+        R = C - (A @ X + X @ B)
+
+    Z = apply_preconditioner(R)
+    P = Z.copy()
+
+    rz_inner = np.vdot(R, Z).real
+
+    for k in range(max_iter):
+        W = A @ P + P @ B
+
+        denom_cg = np.vdot(P, W).real
+        if denom_cg <= 1e-16:
+            # if verbose:
+            #     print(f"Breakdown at iter {k}")
+
+            break
+
+        alpha = rz_inner / denom_cg
+
+        X += alpha * P
+        R -= alpha * W
+
+        # Check convergence (relative to initial residual)
+        if np.vdot(R, R).real <= (tol**2) * np.vdot(C, C).real:
+            if verbose:
+                print(f"Converged in {k+1} iterations")
+            return X
+
+        Z = apply_preconditioner(R)
+
+        rz_new = np.vdot(R, Z).real
+        beta = rz_new / rz_inner
+
+        P = Z + beta * P
+        rz_inner = rz_new
+
+        # if verbose and k % 10 == 0:
+        #     res = np.sqrt(np.vdot(R, R).real)
+        #     print(f"iter {k}, residual {res:.2e}")
+
+    return X

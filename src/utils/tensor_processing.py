@@ -188,73 +188,98 @@ def make_mode_laplacian(
     return L
 
 
-def make_interval_lap(size: int, interval: int):
-    rows = []
-    cols = []
-
-    for i in range(size):
-        for j in range(i + interval, size, interval):
-            rows.append(i)
-            cols.append(j)
-            rows.append(j)
-            cols.append(i)
-
-    data = np.ones(len(rows))
-    A = sparse.csr_matrix((data, (rows, cols)), shape=(size, size))
-
-    d = np.array(A.sum(axis=1)).flatten()
-
-    d_inv_sqrt = np.power(d, -0.5, where=d != 0)
-    D_inv_sqrt = sparse.diags(d_inv_sqrt)
-
-    I = sparse.eye(size)
-    L_norm = I - D_inv_sqrt @ A @ D_inv_sqrt
-
-    return L_norm
+import numpy as np
+from scipy import sparse
 
 
-def make_gaussian_proximity_laplacian(size: int, sigma: float):
-    # 1. Define the window of influence (truncate at 4*sigma for precision)
-    window = int(np.ceil(4 * sigma))
+def make_interval_lap(size: int, interval: int, weights: list = [0.25, 0.5, 0.25]):
+    """
+    Creates a Laplacian where connections are weighted by a specific distribution.
+
+    Args:
+        size: Dimension of the matrix.
+        interval: The step size for future connections.
+        weights: A list of weights (must be odd length to have a clear center).
+                 The center of the list aligns with the 'step' (i + interval).
+    """
 
     rows = []
     cols = []
     data = []
 
+    # Calculate window offset based on weights length
+    # e.g., if weights is [0.25, 0.5, 0.25], window_radius is 1
+    window_radius = len(weights) // 2
+
     for i in range(size):
-        # Only look at neighbors within the window
+        # Look at future intervals
+        for step in range(i + interval, size, interval):
+
+            # Iterate through the weights and apply them to neighbors
+            for idx, weight in enumerate(weights):
+                # Calculate the neighbor's position relative to the center 'step'
+                neighbor = step - window_radius + idx
+
+                if 0 <= neighbor < size:
+                    # Connection from i to neighbor
+                    rows.append(i)
+                    cols.append(neighbor)
+                    data.append(weight)
+
+                    # Symmetric connection (neighbor back to i)
+                    rows.append(neighbor)
+                    cols.append(i)
+                    data.append(weight)
+
+    # 1. Create Weighted Adjacency Matrix
+    # Using sum_duplicates=True (default) handles cases where edges might overlap
+    A = sparse.csr_matrix((data, (rows, cols)), shape=(size, size))
+
+    # 2. Laplacian Calculation: L = D - A
+    # The degree d_i is the sum of weights connected to node i
+    d = np.array(A.sum(axis=1)).flatten()
+    D = sparse.diags(d)
+
+    L = D - A
+
+    return L
+
+
+def make_gaussian_proximity_laplacian(size: int, sigma: float):
+    window = int(np.ceil(4 * sigma))
+    rows, cols, data = [], [], []
+
+    for i in range(size):
         start = max(0, i - window)
         end = min(size, i + window + 1)
-
         for j in range(start, end):
             if i == j:
-                continue  # Skip self-loops for Adjacency
-
-            # Gaussian formula
+                continue
             dist_sq = (i - j) ** 2
             sim = np.exp(-dist_sq / (2 * sigma**2))
 
-            rows.append(i)
-            cols.append(j)
-            data.append(sim)
+            # Clip very small values to keep the matrix sparse but meaningful
+            if sim > 1e-4:
+                rows.append(i)
+                cols.append(j)
+                data.append(sim)
 
     A = sparse.csr_matrix((data, (rows, cols)), shape=(size, size))
 
-    # 2. Normalize to get the Laplacian
+    # Use Combinatorial Laplacian: L = D - A
     d = np.array(A.sum(axis=1)).flatten()
-    # Handle isolated nodes if sigma is too small
-    d_inv_sqrt = np.power(d, -0.5, where=d != 0)
-    D_inv_sqrt = sparse.diags(d_inv_sqrt)
-
-    I = sparse.eye(size)
-    L_norm = I - D_inv_sqrt @ A @ D_inv_sqrt
-
-    return L_norm
+    D = sparse.diags(d)
+    L = D - A
+    return L
 
 
 def test():
-    L = make_interval_lap(100, 10)
-    plt.spy(L)
+    w = np.array([1, 2, 3, 2, 1])
+    w = w / np.sum(w)
+    L = make_interval_lap(50, 10, w)
+    plt.pcolor(L.toarray())
+    print(L.toarray())
+    plt.colorbar()
     plt.show()
 
 

@@ -1,7 +1,11 @@
 from typing import Dict, Optional, Tuple
 import numpy as np
 import numpy.typing as npt
-from utils.anomaly_injector import inject_random_shapes, inject_random_spikes_normal
+from utils.anomaly_injector import (
+    inject_DDoS,
+    inject_random_shapes,
+    inject_random_spikes_normal,
+)
 from utils.tensor_processing import preprocess
 
 
@@ -60,6 +64,22 @@ def create_spike_dataset_train() -> Tuple[npt.NDArray, npt.NDArray, None, dict]:
     T, L = inject_random_spikes_normal(
         T, amplitude_factor=amplitude_factor, n_spikes=n_spikes
     )
+    params = {"amplitude_factor": amplitude_factor, "n_spikes": n_spikes}
+
+    return T, L, None, params | data_param
+
+
+def create_ddos_dataset_train() -> Tuple[npt.NDArray, npt.NDArray, None, dict]:
+    T, data_param = get_train_dataset()
+    n_spikes = 1000
+    amplitude_factor = 6
+
+    L = np.zeros_like(T)
+    for _ in range(100):
+        a = np.random.randint(0, 12)
+        T, Lp = inject_DDoS(T, duration=10, n_senders=7, amplitude_factor=10, target=a)
+        L += Lp
+    L = np.where(L > 0, 1, 0)
     params = {"amplitude_factor": amplitude_factor, "n_spikes": n_spikes}
 
     return T, L, None, params | data_param
