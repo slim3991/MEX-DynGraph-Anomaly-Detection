@@ -18,12 +18,16 @@ class Transformer(Protocol):
 class MyRHOOITenDecomp(BaseEstimator, TransformerMixin):
     def __init__(
         self,
-        ranks: Sequence[int],
+        rank: Sequence[int],
         local_threshold: Optional[float] = 1e-6,
         threshold: Optional[float] = None,
         tol=1e-6,
     ):
-        self.ranks = ranks
+        if type(rank) == int:
+            self.ranks = (rank, rank, rank)
+        else:
+            self.ranks = rank
+
         self.local_threshold = local_threshold
         self.threshold = threshold
         self.tol = tol
@@ -32,8 +36,8 @@ class MyRHOOITenDecomp(BaseEstimator, TransformerMixin):
         self.threshold_ = None
         self.factors_ = None
 
-    @property
-    def name(self):
+    @staticmethod
+    def name():
         return "Robust Tucker (RHOOI)"
 
     def fit(self, X: Tensor, y: Tensor):

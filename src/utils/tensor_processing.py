@@ -1,4 +1,3 @@
-from itertools import product
 import matplotlib.pyplot as plt
 from typing import Literal
 from annoy import AnnoyIndex
@@ -160,12 +159,12 @@ def make_mode_laplacian(
     tensor,
     mode: int,
     k: int = 10,
-    n_trees: int = 10,
-    normalize: bool = True,
+    # n_trees: int = 10,
+    normalize: bool = False,
     sparse: bool = True,
     measure: str = "euclidian",
 ):
-    W = make_mode_knn_annoy(tensor, mode=mode, k=k, sparse=True, distance=measure)
+    W = make_mode_knn(tensor, mode=mode, k=k, sparse=True, distance=measure)
     W = 0.5 * (W + W.T)
 
     deg = np.array(W.sum(axis=1)).flatten()
@@ -273,13 +272,87 @@ def make_gaussian_proximity_laplacian(size: int, sigma: float):
     return L
 
 
+def make_ar_similarity_laplacian(size: int, lookback: int = 3, decay: float = 0.5):
+    """
+    Creates a Laplacian where each node is connected to its previous 'p' neighbors,
+    with weights decaying according to an AR-like influence.
+
+    Args:
+        size: Dimension of the matrix (number of time steps).
+        lookback: The order 'p' (how many steps back to connect).
+        decay: The rate at which similarity decreases for older steps.
+               Weight = decay^distance
+    """
+    rows = []
+    cols = []
+    data = []
+
+    for i in range(size):
+        # Look back up to 'lookback' steps
+        for p in range(1, lookback + 1):
+            prev_node = i - p
+
+            if prev_node >= 0:
+                # AR-style weighting: influence drops as distance increases
+                weight = decay**p
+
+                # Connection from i to past neighbor
+                rows.append(i)
+                cols.append(prev_node)
+                data.append(weight)
+
+                # Symmetric connection (past neighbor to i)
+                rows.append(prev_node)
+                cols.append(i)
+                data.append(weight)
+
+    # 1. Create Weighted Adjacency Matrix
+    # sum_duplicates=True is important here if edges are defined twice
+    A = sparse.csr_matrix((data, (rows, cols)), shape=(size, size))
+
+    # 2. Laplacian Calculation: L = D - A
+    # The degree matrix D contains the sum of weights for each time step
+    d = np.array(A.sum(axis=1)).flatten()
+    D = sparse.diags(d)
+
+    L = D - A
+
+    return L
+
+
+import matplotlib.colors as colors
+
+
 def test():
-    w = np.array([1, 2, 3, 2, 1])
-    w = w / np.sum(w)
-    L = make_interval_lap(50, 10, w)
-    plt.pcolor(L.toarray())
-    print(L.toarray())
-    plt.colorbar()
+    size = 70
+    L_ar = make_ar_similarity_laplacian(size, lookback=8, decay=0.8)
+    L_int = make_interval_lap(size=size, interval=10)
+
+    # 1. Separate Plot for Gaussian
+    plt.figure(figsize=(8, 6))
+    # We use SymLogNorm to handle the scale difference between
+    # the diagonal (degree) and the small weights.
+    plt.imshow(
+        L_int.toarray(),
+        cmap="RdBu_r",
+        # norm=colors.SymLogNorm(linthresh=0.01, linscale=1, vmin=-1, vmax=5),
+        norm=colors.PowerNorm(gamma=0.5),
+    )
+    plt.colorbar(label="Weight")
+    plt.title("Interval Proximity Laplacian\n(Normalized)")
+    plt.show()
+
+    # 2. Separate Plot for AR Similarity
+    plt.figure(figsize=(8, 6))
+    # Alternatively, use a power-law norm to "dim" the diagonal
+    plt.imshow(
+        L_ar.toarray(),
+        cmap="PRGn",
+        norm=colors.PowerNorm(gamma=0.5),
+        # norm=colors.SymLogNorm(linthresh=0.01, linscale=1, vmin=-1, vmax=5),
+    )
+    plt.colorbar(label="Weight")
+    plt.title("AR Similarity Laplacian\n(Normalized)")
     plt.show()
 
 

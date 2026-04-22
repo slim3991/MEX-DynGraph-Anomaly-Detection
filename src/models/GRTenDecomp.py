@@ -1,14 +1,18 @@
+from collections import defaultdict
+import warnings
 from annoy import AnnoyIndex
+import time
 import numpy.typing as npt
 import numpy as np
 from scipy import sparse
 from scipy.sparse import diags, eye, lil_matrix
 import tensorly as tl
-from typing import List, Literal, Optional, Sequence
+from typing import Dict, List, Literal, Optional, Sequence
 from sklearn.base import BaseEstimator, TransformerMixin, check_is_fitted
 from tensorly.cp_tensor import unfolding_dot_khatri_rao
 
 from utils.tensor_processing import (
+    make_ar_similarity_laplacian,
     make_gaussian_proximity_laplacian,
     make_interval_lap,
     make_mode_laplacian,
@@ -22,9 +26,8 @@ type Tensor = tl.tensor | npt.NDArray
 class MyGRTenDecomp(BaseEstimator, TransformerMixin):
     def __init__(
         self,
+        laplacian_parameters: Dict[str, float | str],
         rank: int = 5,
-        lambdas: Sequence[float] = (0.1, 0.1, 0.1),
-        ks: Optional[Sequence[int]] = (5, 5, 5),
         local_threshold: Optional[float] = None,
         threshold: Optional[float] = None,
         recompute_laps: bool = True,  # New flag to trigger internal updates
@@ -34,11 +37,9 @@ class MyGRTenDecomp(BaseEstimator, TransformerMixin):
         tol=1e-6,
     ):
         self.rank = rank
-        self.lambdas = lambdas
-        self.ks = ks
+        self.laplacian_parameters = laplacian_parameters
         self.local_threshold = local_threshold
         self.recompute_laps = recompute_laps
-        self.measure = measure
         self.threshold = threshold
         self.tol = tol
 
@@ -48,9 +49,9 @@ class MyGRTenDecomp(BaseEstimator, TransformerMixin):
         self.laps_ = None
         self.E_ = None
 
-    @property
-    def name(self):
-        return "GRRCP" if self.local_threshold != 0 else "GRRCP No Robust"
+    @staticmethod
+    def name():
+        return "GR-CP"
 
     def fit(self, X: Tensor, y: Optional[Tensor] = None):
 
@@ -58,10 +59,8 @@ class MyGRTenDecomp(BaseEstimator, TransformerMixin):
         factors, self.E_ = graph_regularized_als(
             X,
             self.rank,
-            lmbda=self.lambdas,
             threshold=self.local_threshold,
-            ks=self.ks,
-            measure=self.measure,
+            laplacian_parameters=self.laplacian_parameters,
             tol=self.tol,
         )
 
@@ -81,68 +80,87 @@ class MyGRTenDecomp(BaseEstimator, TransformerMixin):
         return X - X_hat
 
 
+def make_laplacians(tensor, lap_param):
+    # Mode 0 & 1 (Pre-weighted)
+    laps = []
+    for m in [0, 1]:
+        k_key = f"ks_{m+1}"
+        l_key = f"lambda_{m+1}"
+        if lap_param.get(k_key, 0) != 0 and lap_param.get(l_key, 0) != 0:
+            L = lap_param[l_key] * make_mode_laplacian(
+                tensor, mode=m, k=lap_param[k_key], measure=lap_param["measure"]
+            )
+            laps.append(L)
+        else:
+            laps.append(None)
+
+    # Mode 2 (Composite Temporal)
+    size_3 = tensor.shape[2]
+    lap3 = sparse.csr_matrix((size_3, size_3))
+
+    if lap_param.get("lambda_interval", 0) != 0:
+        lap3 += lap_param["lambda_interval"] * make_interval_lap(
+            size=size_3, interval=lap_param.get("interval", 288)
+        )
+
+    if lap_param.get("lambda_smooth", 0) != 0:
+        # Note: Ensure make_ar_similarity_laplacian is imported
+        lap3 += lap_param["lambda_smooth"] * make_ar_similarity_laplacian(
+            size=size_3, lookback=lap_param.get("lookback", 5), decay=0.5
+        )
+
+    laps.append(lap3 if lap3.nnz > 0 else None)
+    return laps
+
+
 def graph_regularized_als(
     tensor,
     rank,
-    ks,
-    measure,
-    lmbda=(0.1, 0.1, 0.1),
+    laplacian_parameters,
     n_iter=20,
     tol=1e-6,
     threshold=None,
     verbose=False,
 ):
+    # Dictionary to track cumulative time
+    stats = defaultdict(float)
 
     # Initial CP Decomposition
     weights, factors = tl.decomposition.parafac(
         tensor, rank=rank, tol=tol, init="random"
     )
 
-    # make Laplacians
-    laps = [
-        (
-            None
-            if ks[m] is None or ks[m] == 0 or lmbda[m] == 0
-            else make_mode_laplacian(
-                tensor, mode=m, k=ks[m], measure=measure, normalize=False
-            )
-        )
-        for m in range(3)
-    ]
-    # laps = [(eye(tensor.shape[m], format="csr") * lmbda[m]) for m in range(3)]
-    # L = make_gaussian_proximity_laplacian(size=tensor.shape[2], sigma=10)
-    w = np.array((1, 2, 3, 2, 1))
-    w = w / np.sum(w)
-    L = make_interval_lap(size=tensor.shape[2], interval=12 * 24, weights=w)
-    laps[2] = L
-    print(lmbda)
+    laps = make_laplacians(tensor, lap_param=laplacian_parameters)
 
     M = tensor.copy()
     old_err = 1e10
+
     for i in range(n_iter):
         for mode in range(3):
-            # 1. Setup Sylvester components
+            # --- 1. Setup components ---
+            start_setup = time.perf_counter()
             idx = [m for m in range(3) if m != mode]
             G1 = np.dot(factors[idx[0]].T, factors[idx[0]])
             G2 = np.dot(factors[idx[1]].T, factors[idx[1]])
-
             S = G1 * G2 * (weights[:, None] * weights[None, :])
 
             mttkrp = unfolding_dot_khatri_rao(M, (weights, factors), mode=mode)
+            stats["mttkrp_and_setup"] += time.perf_counter() - start_setup
 
-            # 2. Solve the System
             if laps[mode] is None:
-                # Standard ALS step
                 factors[mode] = np.linalg.solve(S + 1e-8 * np.eye(rank), mttkrp.T).T
             else:
-                X = factors[mode]  # Warm start from previous iter
+                X = factors[mode]
                 X = global_cg_sylvester(
-                    A=lmbda[mode] * laps[mode], B=S, C=mttkrp, x0=X, verbose=False
+                    A=laps[mode],
+                    B=S,
+                    C=mttkrp,
+                    x0=X,
+                    verbose=False,
+                    tol=tol,
                 )
                 factors[mode] = X
-                # print("ratio: ", tl.norm(lmbda[mode] * laps[mode] @ X) / tl.norm(X @ S))
 
-            # 3. Normalization
         for r in range(rank):
             norm = 1.0
             for mode in range(3):
@@ -155,16 +173,15 @@ def graph_regularized_als(
             X_tensor = tl.cp_to_tensor((weights, factors))
             res = tensor - X_tensor
 
-            # Only update S after initial burn-in to stabilize factors
             if threshold != 0:
                 E = detect_anomalies_soft(res, threshold=threshold)
                 M = tensor - E
 
             err = np.linalg.norm(res) / tl.norm(M)
             delta = np.abs(err - old_err)
-            # print(delta)
+
             if verbose:
-                print(f"Iter {i}, Error: {err:.4f}, Delta: {delta:.6f}")
+                print(f"Iter {i}, Error: {err:.4f}")
 
             if delta < tol:
                 break
@@ -174,10 +191,8 @@ def graph_regularized_als(
 
 
 def global_cg_sylvester(A, B, C, x0=None, max_iter=1000, tol=1e-6, verbose=False):
-    A = sparse.csr_matrix(A)
-    B = sparse.csc_matrix(B)
 
-    # Precompute diagonal preconditioner
+    t0 = time.perf_counter()
     dA = A.diagonal()
     dB = B.diagonal()
 
@@ -199,7 +214,8 @@ def global_cg_sylvester(A, B, C, x0=None, max_iter=1000, tol=1e-6, verbose=False
     P = Z.copy()
 
     rz_inner = np.vdot(R, Z).real
-
+    t_setup = time.perf_counter() - t0
+    t1 = time.perf_counter()
     for k in range(max_iter):
         W = A @ P + P @ B
 
@@ -218,7 +234,11 @@ def global_cg_sylvester(A, B, C, x0=None, max_iter=1000, tol=1e-6, verbose=False
         # Check convergence (relative to initial residual)
         if np.vdot(R, R).real <= (tol**2) * np.vdot(C, C).real:
             if verbose:
+                t_loop = time.perf_counter() - t1
+                print("=" * 30)
+                print(f"Setup: {t_setup:.4f}s | Loop ({k} iters): {t_loop:.4f}s")
                 print(f"Converged in {k+1} iterations")
+                print("=" * 30 + "\n")
             return X
 
         Z = apply_preconditioner(R)
@@ -232,5 +252,8 @@ def global_cg_sylvester(A, B, C, x0=None, max_iter=1000, tol=1e-6, verbose=False
         # if verbose and k % 10 == 0:
         #     res = np.sqrt(np.vdot(R, R).real)
         #     print(f"iter {k}, residual {res:.2e}")
-
+    if verbose:
+        t_loop = time.perf_counter() - t1
+        print(f"Setup: {t_setup:.4f}s | Loop ({k} iters): {t_loop:.4f}s")
+    warnings.warn(f"CG did not converge, finished at iteration: {k}")
     return X

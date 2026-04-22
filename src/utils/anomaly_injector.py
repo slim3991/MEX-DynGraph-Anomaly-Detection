@@ -134,7 +134,7 @@ def inject_random_shapes(
 #     return T_spiked, L
 
 
-def inject_random_spikes_normal(T, amplitude_factor=5, n_spikes=1000):
+def inject_random_spikes_normal(T, amplitude_factor=5.0, n_spikes=1000):
     nx, ny, nt = T.shape
 
     L = np.zeros_like(T)
@@ -185,6 +185,39 @@ def inject_DDoS(
 
         T[target, sender, start : start + duration] += ddos_shape
         mask[target, sender, start : start + duration] = 1
+
+    return T, mask
+
+
+def inject_outage(
+    tensor: npt.NDArray,
+    duration: int,
+    n_nodes: int,
+) -> Tuple[npt.NDArray, npt.NDArray]:
+    """
+    Simulates a network outage by setting all traffic involving
+    specific nodes to zero for a set duration.
+    """
+    T = tensor.copy()
+    mask = np.zeros_like(T)
+    nx, ny, nt = T.shape
+
+    # 1. Randomly select the time window for the outage
+    start = np.random.randint(0, nt - duration + 1)
+    end = start + duration
+
+    # 2. Randomly select the nodes affected by the outage
+    # nx is usually the number of source/dest nodes
+    affected_nodes = np.random.choice(nx, size=n_nodes, replace=False)
+
+    for node in affected_nodes:
+        # Set all outgoing traffic from these nodes to 0
+        T[node, :, start:end] = 0
+        mask[node, :, start:end] = 1
+
+        # Set all incoming traffic to these nodes to 0
+        T[:, node, start:end] = 0
+        mask[:, node, start:end] = 1
 
     return T, mask
 

@@ -21,8 +21,8 @@ class MyCPTenDecomp(BaseEstimator, TransformerMixin):
         self.factors = None
         self.tol = tol
 
-    @property
-    def name(self):
+    @staticmethod
+    def name():
         return "Basic CP"
 
     def fit(self, X: Tensor, y: Optional[Tensor] = None):

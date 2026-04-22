@@ -1,25 +1,82 @@
-ddos_parameters:
-  basic_cp:
-    rank: 10
-    tol: 0.0001
-  robust_cp:
-    rank: 10
-    tol: 0.0001
+spikes_configs:
   GRRCP_no_robust:
-    rank: 10 
-    ks: [8 ,0, 1]
-    lambdas: [90, 0, 8300]
-    local_threshold: 0
-    measure: "angular"
-    tol: 0.0001
-  GRRCP:
-    rank: 10 
-    ks: [8 ,0, 1]
-    lambdas: [90, 0, 8300]
-    measure: "angular"
-    tol: 0.0001
+    laps_params:
+      lambda_1: 0
+      lambda_2: 0
+      lambda_smooth: 2900 
+      lambda_interval: 8300
+      measure: "dot"
+      ks_1: 0
+      ks_2: 0
+  GRRTucker_no_robust:
+    laps_params:
+      lambda_1: 0
+      lambda_2: 0
+      lambda_smooth: 111
+      lambda_interval: 24
+      measure: "dot"
+      ks_1: 0
+      ks_2: 0
+
+events_configs:
+  GRRTucker_no_robust:
+    laps_params:
+      lambda_1: 0
+      lambda_2: 0
+      lambda_smooth: 150
+      lambda_interval: 49 
+      measure: "dot"
+      ks_1: 0
+      ks_2: 0
+  GRRCP_no_robust:
+    laps_params:
+      lambda_1: 0
+      lambda_2: 0
+      lambda_smooth: 5259
+      lambda_interval: 126
+      measure: "dot"
+      ks_1: 0
+      ks_2: 0
 
 
+ddos_configs:
+  GRRCP_no_robust:
+    laps_params:
+      lambda_1: 0
+      lambda_2: 0
+      lambda_smooth: 9318
+      lambda_interval: 998 
+      measure: "dot"
+      ks_1: 0
+      ks_2: 0
+  GRRTucker_no_robust:
+    laps_params:
+      lambda_1: 0
+      lambda_2: 0
+      lambda_smooth: 208
+      lambda_interval: 100
+      measure: "dot"
+      ks_1: 0
+      ks_2: 0
 
+outage_configs:
+  GRRCP_no_robust:
+    laps_params:
+      lambda_1: 0
+      lambda_2: 0
+      lambda_smooth: 
+      lambda_interval:  
+      measure: "dot"
+      ks_1: 0
+      ks_2: 0
+  GRRTucker_no_robust:
+    laps_params:
+      lambda_1: 0
+      lambda_2: 0
+      lambda_smooth: 
+      lambda_interval: 
+      measure: "dot"
+      ks_1: 0
+      ks_2: 0
 
 

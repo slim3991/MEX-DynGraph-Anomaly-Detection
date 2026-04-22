@@ -1,162 +1,168 @@
 from annoy import AnnoyIndex
 import numpy.typing as npt
 import numpy as np
+from scipy import sparse
 from scipy.sparse import diags, eye, lil_matrix
 import tensorly as tl
-from typing import List, Literal, Optional, Sequence, Tuple
+from typing import Dict, List, Literal, Optional, Sequence, Tuple
 from sklearn.base import BaseEstimator, TransformerMixin, check_is_fitted
 from tensorly.cp_tensor import unfolding_dot_khatri_rao
 from tensorly.tucker_tensor import multi_mode_dot
 
-from utils.tensor_processing import make_interval_lap, make_mode_laplacian
+from utils.tensor_processing import (
+    make_ar_similarity_laplacian,
+    make_interval_lap,
+    make_mode_laplacian,
+)
 from utils.utils import detect_anomalies_soft, global_cg_sylvester, optimal_f1_threshold
 
 
 type Tensor = tl.tensor | npt.NDArray
 
 
+def make_laplacians(tensor, lap_param):
+    laps = []
+    for m in [0, 1]:
+        k_key = f"ks_{m+1}"
+        l_key = f"lambda_{m+1}"
+        if lap_param.get(k_key, 0) != 0 and lap_param.get(l_key, 0) != 0:
+            L = lap_param[l_key] * make_mode_laplacian(
+                tensor, mode=m, k=lap_param[k_key], measure=lap_param["measure"]
+            )
+            laps.append(L)
+        else:
+            laps.append(None)
+
+    size_3 = tensor.shape[2]
+    lap3 = sparse.csr_matrix((size_3, size_3))
+
+    if lap_param.get("lambda_interval", 0) != 0:
+        lap3 += lap_param["lambda_interval"] * make_interval_lap(
+            size=size_3, interval=lap_param.get("interval", 288)
+        )
+
+    if lap_param.get("lambda_smooth", 0) != 0:
+        lap3 += lap_param["lambda_smooth"] * make_ar_similarity_laplacian(
+            size=size_3, lookback=lap_param.get("lookback", 5), decay=0.5
+        )
+
+    laps.append(lap3 if lap3.nnz > 0 else None)
+    return laps
+
+
 class MyGRTuckerDecomp(BaseEstimator, TransformerMixin):
     def __init__(
         self,
+        laplacian_parameters: Dict[str, float],
         rank: Tuple[int, int, int] = (5, 5, 5),
-        lambdas: Sequence[float] = (0.1, 0.1, 0.1),
-        ks: Optional[Sequence[int]] = (5, 5, 5),
         local_threshold: Optional[float] = None,
         threshold: Optional[float] = None,
-        measure: Literal[
-            "angular", "euclidean", "manhattan", "hamming", "dot"
-        ] = "euclidean",
         tol=1e-6,
     ):
-        self.rank = rank
-        self.lambdas = lambdas
-        self.ks = ks
+        if type(rank) == int:
+            self.rank = (rank, rank, rank)
+        else:
+            self.rank = rank
+
+        self.laplacian_parameters = laplacian_parameters
         self.local_threshold = local_threshold
-        self.measure = measure
         self.threshold = threshold
         self.tol = tol
 
-        # Learned attributes
-        self.threshold_ = None
-        self.X_hat_ = None
-        self.laps_ = None
-        self.E_ = None
-
-    @property
-    def name(self):
-        return "GRRTucker" if self.local_threshold != 0 else "GRRTucker No Robust"
+    @staticmethod
+    def name():
+        return "GR-Tucker"
 
     def fit(self, X: Tensor, y: Optional[Tensor] = None):
-
-        # Pass recompute parameters into the ALS function
         core, factors, self.E_ = graph_regularized_als(
             X,
             self.rank,
-            lmbda=self.lambdas,
+            laplacian_parameters=self.laplacian_parameters,  # Pass the dict
             threshold=self.local_threshold,
-            ks=self.ks,
-            measure=self.measure,
             tol=self.tol,
         )
-
         self.X_hat_ = tl.tenalg.multi_mode_dot(core, factors)
-
         if y is not None:
             self.threshold_, _ = optimal_f1_threshold(self.X_hat_, y)
 
         return self
 
     def transform(self, X: Tensor) -> Tensor:
+
         check_is_fitted(self, ["X_hat_"])
+
         return self.X_hat_
 
     def residuals(self, X: Tensor) -> Tensor:
+
         X_hat = self.transform(X)
+
         return X - X_hat
 
 
 def graph_regularized_als(
     tensor,
     ranks,
-    ks,
-    measure,
-    lmbda=(0.1, 0.1, 0.1),
+    laplacian_parameters,  # Dict replaces individual args
     n_iter=100,
     tol=1e-6,
     threshold=None,
     verbose=False,
 ):
     t_decomp = tl.decomposition.tucker(
-        tensor=tensor,
-        rank=ranks,
-        init="random",
-        tol=tol,
+        tensor=tensor, rank=ranks, init="random", tol=tol
     )
-    assert t_decomp is not None
-    core = t_decomp.core
-    factors = t_decomp.factors
-    # make Laplacians
-    laps: List[Optional[npt.NDArray]] = [
-        (
-            None
-            if ks[0] is None
-            else make_mode_laplacian(tensor, mode=0, k=ks[0], measure=measure)
-            * lmbda[0]
-        ),
-        (
-            None
-            if ks[1] is None
-            else make_mode_laplacian(tensor, mode=1, k=ks[1], measure=measure)
-            * lmbda[1]
-        ),
-        # (
-        #     None
-        #     if ks[0] is None
-        #     else make_mode_laplacian(tensor, mode=2, k=ks[2], measure=measure)
-        #     * lmbda[2]
-        # ),
-    ]
+    core, factors = t_decomp.core, t_decomp.factors
 
-    laps.append(make_interval_lap(size=tensor.shape[2], interval=12 * 24))
+    # 1. Generate the pre-weighted Laplacians
+    laps = make_laplacians(tensor, lap_param=laplacian_parameters)
 
     M = tensor.copy()
     E = np.zeros_like(M)
     old_err = 1e10
+
     for i in range(n_iter):
         # --- Update Factor Matrices ---
         for mode in range(len(ranks)):
             other_modes = [m for m in range(len(ranks)) if m != mode]
+
+            # Project tensor onto other factors
             Y = multi_mode_dot(
                 M, [factors[m].T for m in other_modes], modes=other_modes
             )
-
             Y_n = tl.unfold(Y, mode)
             G_n = tl.unfold(core, mode)
 
             B = Y_n @ G_n.T
-
             S = G_n @ G_n.T
 
-            factors[mode] = global_cg_sylvester(
-                laps[mode], S, B, x0=factors[mode], tol=tol
-            )
+            # 2. Regularized Update
+            if laps[mode] is None:
+                # Solve standard least squares: factors[mode] @ S = B
+                factors[mode] = np.linalg.solve(S + 1e-8 * np.eye(S.shape[0]), B.T).T
+            else:
+                # Solve Sylvester: L @ X + X @ S = B
+                factors[mode] = global_cg_sylvester(
+                    laps[mode], S, B, x0=factors[mode], tol=tol
+                )
 
+            # Re-orthogonalize for Tucker stability
             factors[mode], _ = np.linalg.qr(factors[mode])
 
+        # --- Update Core ---
         core = multi_mode_dot(M, [f.T for f in factors])
 
+        # --- Convergence and Anomaly Detection ---
         X_hat = multi_mode_dot(core, factors)
         res = tensor - X_hat
         if i == 0 or i % 4 == 0:
             if threshold != 0:
                 E = detect_anomalies_soft(res, threshold=threshold)
                 M = tensor - E
-            error = np.linalg.norm(res) / tl.norm(M)
-            diff = abs(old_err - error)
-            if i > 0 and diff < tol:
-                print(f"Converged at iteration {i}")
-                break
 
+            error = np.linalg.norm(res) / tl.norm(M)
+            if abs(old_err - error) < tol:
+                break
             old_err = error
 
     return core, factors, E

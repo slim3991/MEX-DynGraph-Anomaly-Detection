@@ -1,3 +1,4 @@
+from logging import warning
 from typing import Tuple
 import numpy as np
 from scipy import sparse
@@ -44,8 +45,6 @@ def detect_anomalies_soft(res, threshold: float | None = None):
 
 
 def global_cg_sylvester(A, B, C, x0=None, max_iter=1000, tol=1e-6, verbose=False):
-    A = sparse.csr_matrix(A)
-    B = sparse.csc_matrix(B)
 
     # Precompute diagonal preconditioner
     dA = A.diagonal()
@@ -98,8 +97,8 @@ def global_cg_sylvester(A, B, C, x0=None, max_iter=1000, tol=1e-6, verbose=False
         P = Z + beta * P
         rz_inner = rz_new
 
-        # if verbose and k % 10 == 0:
-        #     res = np.sqrt(np.vdot(R, R).real)
-        #     print(f"iter {k}, residual {res:.2e}")
-
+        if verbose and k % 10 == 0:
+            res = np.sqrt(np.vdot(R, R).real)
+            print(f"iter {k}, residual {res:.2e}")
+    warning.warn(f"CG did not converge, stoped at iteration: {k}")
     return X

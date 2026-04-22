@@ -17,18 +17,22 @@ class Transformer(Protocol):
 class MyTuckerTenDecomp(BaseEstimator, TransformerMixin):
     def __init__(
         self,
-        ranks: Sequence[int] = (5, 5, 5),
+        rank: Sequence[int] = (5, 5, 5),
         threshold: Optional[float] = None,
         tol=1e-6,
     ):
-        self.ranks = ranks
+        if type(rank) == int:
+            self.ranks = (rank, rank, rank)
+        else:
+            self.ranks = rank
+
         self.tol = tol
         self.threshold_ = None
         self.threshold = threshold
         self.tucker_parts_ = None
 
-    @property
-    def name(self):
+    @staticmethod
+    def name():
         return "Basic Tucker"
 
     def fit(self, X: Tensor, y: Tensor):

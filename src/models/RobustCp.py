@@ -34,8 +34,8 @@ class MyRCPTenDecomp(BaseEstimator, TransformerMixin):
         self.X_hat_ = None
         self.factors_ = None
 
-    @property
-    def name(self):
+    @staticmethod
+    def name():
         return "Robust CP"
 
     def fit(self, X: Tensor, y: Optional[Tensor] = None):

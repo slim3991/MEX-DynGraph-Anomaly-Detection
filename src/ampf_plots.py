@@ -9,72 +9,38 @@ from models.GRTenDecomp import MyGRTenDecomp
 from models.GRTucker import MyGRTuckerDecomp
 from models.RHOOI_model import MyRHOOITenDecomp
 from models.RobustCp import MyRCPTenDecomp
-from utils.anomaly_injector import (
-    inject_DDoS,
-    inject_random_shapes,
-    inject_random_spikes_normal,
-)
-from utils.datasets import get_train_dataset
-
-
-def create_spike_dataset_train(ampf):
-    T, data_param = get_train_dataset()
-    n_spikes = 1000
-    amplitude_factor = ampf
-
-    T, L = inject_random_spikes_normal(
-        T, amplitude_factor=amplitude_factor, n_spikes=n_spikes
-    )
-    params = {"amplitude_factor": amplitude_factor, "n_spikes": n_spikes}
-
-    return T, L, None, params | data_param
-
-
-def create_event_dataset_train(ampf):
-    T, data_param = get_train_dataset()
-
-    params = {
-        "start_min": 20,
-        "start_max": 4000,
-        "min_duration": 10,
-        "max_duration": 100,
-        "n_shapes": 20,
-        "amplitude_factor": ampf,
-    }
-    T, L, events = inject_random_shapes(T, **params)
-
-    return T, L, events, params | data_param
-
-
-def create_ddos_dataset_train(ampf):
-    T, data_param = get_train_dataset()
-    n_spikes = 1000
-    amplitude_factor = 6
-
-    L = np.zeros_like(T)
-    for _ in range(100):
-        a = np.random.randint(0, 12)
-        T, Lp = inject_DDoS(
-            T, duration=10, n_senders=7, amplitude_factor=ampf, target=a
-        )
-        L += Lp
-    L = np.where(L > 0, 1, 0)
-    params = {"amplitude_factor": amplitude_factor, "n_spikes": n_spikes}
-    return T, L, None, params | data_param
 
 
 with open("src/model_config.yaml") as f:
     m_conf = yaml.safe_load(f)
-model_confs = m_conf["ddos_parameters"]
+model_confs = m_conf["DDoS_configs"]
+
 models = [
-    MyGRTenDecomp(**model_confs["GRRCP"]),
-    MyGRTenDecomp(**model_confs["GRRCP_no_robust"]),
-    MyCPTenDecomp(**model_confs["basic_cp"]),
-    MyRCPTenDecomp(**model_confs["robust_cp"]),
-    # MyTuckerTenDecomp(**model_confs["basic_tucker"]),
-    # MyRHOOITenDecomp(**model_confs["robust_tucker"]),
-    # MyGRTuckerDecomp(**model_confs["GRRTucker"]),
-    # MyGRTuckerDecomp(**model_confs["GRRTucker_no_robust"]),
+    MyGRTenDecomp(
+        rank=20, tol=1e-4, laplacian_parameters=model_confs["GRRCP"]["laps_params"]
+    ),
+    MyGRTenDecomp(
+        rank=20,
+        tol=1e-4,
+        local_threshold=0,
+        laplacian_parameters=model_confs["GRRCP_no_robust"]["laps_params"],
+    ),
+    MyGRTuckerDecomp(
+        rank=(20, 20, 20),
+        local_threshold=None,
+        tol=1e-4,
+        laplacian_parameters=model_confs["GRRTucker"]["laps_params"],
+    ),
+    MyGRTuckerDecomp(
+        rank=(20, 20, 20),
+        local_threshold=0,
+        tol=1e-4,
+        laplacian_parameters=model_confs["GRRTucker_no_robust"]["laps_params"],
+    ),
+    MyTuckerTenDecomp(rank=(20, 20, 20), tol=1e-4),
+    MyRHOOITenDecomp(rank=(20, 20, 20), tol=1e-4),
+    MyCPTenDecomp(rank=20, tol=1e-4),
+    MyTuckerTenDecomp(rank=(20, 20, 20), tol=1e4),
 ]
 
 # Range of amplitude factors to test
@@ -92,7 +58,7 @@ for model in models:
         for i in range(2):
             print(f"{model.name} | ampf={ampf} | run={i}")
 
-            T, L, _, _ = create_spike_dataset_train(ampf)
+            T, L, _, _ = create_ddos_dataset_train(ampf)
             T_hat = model.fit_transform(T, L)
             resids = T - T_hat
 
