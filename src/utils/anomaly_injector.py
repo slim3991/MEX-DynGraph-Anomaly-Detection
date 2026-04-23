@@ -167,7 +167,6 @@ def inject_DDoS(
     mask = np.zeros_like(T)
     nx, _, nt = T.shape
 
-    # Ensure injection fits within time bounds
     start = np.random.randint(0, nt - duration + 1)
 
     attackers = np.random.choice(nx, size=n_senders, replace=False)

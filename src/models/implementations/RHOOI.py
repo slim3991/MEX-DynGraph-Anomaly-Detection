@@ -27,7 +27,7 @@ def r_hooi(
     X, ranks, n_iter=100, tol=1e-4, threshold: Optional[float] = None, verbose=False
 ):
     # Initialize factors via HOSVD
-    x_hat = tl.decomposition.tucker(X, ranks, tol=1e-3, init="random")
+    x_hat = tl.decomposition.tucker(X, ranks, tol=1e-1, init="random")
     factors = x_hat.factors
     core = x_hat.core
     del x_hat
@@ -51,8 +51,7 @@ def r_hooi(
         if iteration == 0 or iteration % 4 == 0:
             X_hat = tl.tenalg.multi_mode_dot(core, factors)
             residual = X - X_hat
-            error = np.linalg.norm(residual) / tl.norm(M)
-            diff = abs(old_error - error)
+            error = np.linalg.norm(residual) / tl.norm(X)
             if threshold != 0:
                 S = detect_anomalies_soft(residual, threshold=threshold)
                 M = X - S

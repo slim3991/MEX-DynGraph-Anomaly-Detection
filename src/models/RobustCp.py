@@ -20,17 +20,14 @@ class MyRCPTenDecomp(BaseEstimator, TransformerMixin):
     def __init__(
         self,
         rank: int = 5,
-        threshold: Optional[float] = None,
         local_threshold: Optional[float] = None,
         tol: float = 1e-6,
     ):
         self.rank = rank
         self.local_threshold = local_threshold
-        self.threshold = threshold
         self.tol = tol
 
         # Initializing learned parameters to None
-        self.threshold_ = None
         self.X_hat_ = None
         self.factors_ = None
 
@@ -48,10 +45,6 @@ class MyRCPTenDecomp(BaseEstimator, TransformerMixin):
 
         self.factors_ = factors
         self.X_hat_ = tl.cp_to_tensor(self.factors_)
-
-        if y is not None:
-            # Storing result in self.threshold_
-            self.threshold_, _ = optimal_f1_threshold(self.X_hat_, y)
 
         return self
 

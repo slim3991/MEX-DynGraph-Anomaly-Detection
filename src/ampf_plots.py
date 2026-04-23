@@ -63,10 +63,7 @@ for model in models:
             resids = T - T_hat
 
             precision, recall, _ = precision_recall_curve(L.ravel(), resids.ravel())
-
-            # Sort recall before AUC
             recall, precision = zip(*sorted(zip(recall, precision)))
-
             pr_auc = auc(recall, precision)
             aucs.append(pr_auc)
 

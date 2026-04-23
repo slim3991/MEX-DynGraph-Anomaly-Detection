@@ -1,4 +1,3 @@
-from math import radians
 import secrets
 import sys
 import mlflow
@@ -7,6 +6,8 @@ import numpy as np
 import subprocess
 from dataclasses import asdict
 from typing import Callable, Any, Literal
+
+from sklearn.metrics import auc, precision_recall_curve
 from models.GRTucker import MyGRTuckerDecomp
 from utils.datasets import (
     create_ddos_dataset,
@@ -45,15 +46,13 @@ def get_git_hash():
 def run_tensor_experiment(
     experiment_name: str,
     model_name: str,
+    anomaly_type: Literal["events", "spikes", "ddos", "outage"],
     suggest_and_build_model: Callable[[optuna.Trial, Any], Any],
-    anomaly_type: Literal["events", "spikes"] = "events",
-    n_trials: int = 40,
-    seed: int = 42,
+    n_trials: int = 30,
     tag=None,
 ):
     model_tag = secrets.token_hex(4)
 
-    np.random.seed(seed)
     mlflow.set_experiment(experiment_name)
     data_fetch_funcs = {
         "spikes": create_spike_dataset,
@@ -73,9 +72,10 @@ def run_tensor_experiment(
             tags={"group_tag": tag},
         ):
             n = 3
-            ave_metrics = None
+            prauc_sum = 0.0
             for _ in range(n):
-                T, L, events, data_params = data_fetch_func(train_test="train")
+
+                T, L, _, _ = data_fetch_func(train_test="train")
                 model, trial_params = suggest_and_build_model(trial, T)
                 model.tol = 1e-4
 
@@ -89,23 +89,15 @@ def run_tensor_experiment(
                 )
                 model.fit(T, L)
                 resids = model.residuals(T)
-                metrics = compute_metrics_with_threshold(
-                    resids, L, model.threshold_, events=events
-                )
-                if ave_metrics is None:
-                    ave_metrics = metrics
-                else:
-                    ave_metrics += metrics
+                precision, recall, _ = precision_recall_curve(L.ravel(), resids.ravel())
+                recall, precision = zip(*sorted(zip(recall, precision)))
+                pr_auc = float(auc(recall, precision))
+                prauc_sum += pr_auc
 
                 # ave_metric = metrics if ave_metrics is None else ave_metrics + metrics
-            assert ave_metrics is not None
-            ave_metrics = ave_metrics / n
+            ave_prauc = prauc_sum / n
 
-            metrics_dict = {
-                k: v for k, v in asdict(ave_metrics).items() if v is not None
-            }
-            mlflow.log_metrics(metrics_dict)
-            return ave_metrics.pr_auc if ave_metrics.pr_auc is not None else 0
+            return ave_prauc
 
     with mlflow.start_run(
         run_name=f"{model_name}-({model_tag})-({anomaly_type})", tags={"run_tag": tag}
@@ -116,7 +108,6 @@ def run_tensor_experiment(
                 "model_tag": model_tag,
                 "group_tag": tag,
                 "git_hash": get_git_hash(),
-                "seed": seed,
                 "anomaly_type": anomaly_type,
             }
         )
@@ -181,181 +172,27 @@ def grten_builder_no_robust(trial, T):
     return model, lap_params
 
 
-# def grTucker_builder(trial, T):
-#     lap_params = {
-#         "lambda_1": trial.suggest_float("lambda_1", 1e-4, 1e4, log=True),
-#         "lambda_2": trial.suggest_float("lambda_2", 1e-4, 1e4, log=True),
-#         "lambda_smooth": trial.suggest_float("lambda_smooth", 0, 1e4),
-#         "lambda_interval": trial.suggest_float("lambda_intervall", 0, 1e4),
-#         "distance": trial.suggest_categorical(
-#             "distance", ["dot", "euclidean", "angular"]
-#         ),
-#         "k1": trial.suggest_int("k1", 0, min(T.shape[0], 50)),
-#         "k2": trial.suggest_int("k2", 0, min(T.shape[1], 50)),
-#     }
-#     trial_params = {
-#         "rank_0": 10,  # trial.suggest_int("rank_0", 7, 13),
-#         "rank_1": 10,  # trial.suggest_int("rank_1", 7, 13),
-#         "rank_2": 10,  # trial.suggest_int("rank_2", 7, 30),
-#         "local_threshold": None,  # trial.suggest_float("local_threshold", 0, 3),
-#     }
-#
-#     ranks = (
-#         trial_params["rank_0"],
-#         trial_params["rank_1"],
-#         trial_params["rank_2"],
-#     )
-#
-#     model = MyGRTuckerDecomp(
-#         rank=ranks,
-#         laplacian_parameters=lap_params,
-#         local_threshold=trial_params["local_threshold"],
-#         tol=1e-4,
-#     )
-#     return model, trial_params
-
-
-# def grten_builder(trial, T):
-#     lap_params = {
-#         "lambda_1": trial.suggest_float("lambda_1", 1e-4, 1e4, log=True),
-#         "lambda_2": trial.suggest_float("lambda_2", 1e-4, 1e4, log=True),
-#         "lambda_smooth": trial.suggest_float("lambda_smooth", 0, 1e4),
-#         "lambda_interval": trial.suggest_float("lambda_intervall", 0, 1e4),
-#         "distance": trial.suggest_categorical(
-#             "distance", ["dot", "euclidean", "angular"]
-#         ),
-#         "k1": trial.suggest_int("k1", 0, min(T.shape[0], 50)),
-#         "k2": trial.suggest_int("k2", 0, min(T.shape[1], 50)),
-#     }
-#     trial_params = {
-#         "rank": 10,  # trial.suggest_int("rank", 7, 30),
-#         "local_threshold": None,  # trial.suggest_float("local_threshold", 0, 3),
-#     }
-#
-#     model = MyGRTenDecomp(
-#         rank=trial_params["rank"],
-#         laplacian_parameters=lap_params,
-#         local_threshold=trial_params["local_threshold"],
-#         tol=1e-4,
-#     )
-#     return model, trial_params | lap_params
-
-
-# def cp_builder(trial, T):
-#     params = {
-#         "rank": trial.suggest_int("rank", 1, 20),
-#     }
-#     model = MyCPTenDecomp(rank=params["rank"], tol=1e-4)
-#     return model, params
-#
-#
-# def tucker_builder(trial, T):
-#     n1, n2, n3 = T.shape
-#     params = {
-#         "rank_0": trial.suggest_int("rank_0", 1, min(20, n1)),
-#         "rank_1": trial.suggest_int("rank_1", 1, min(20, n2)),
-#         "rank_2": trial.suggest_int("rank_2", 1, min(20, n3)),
-#     }
-#     ranks = (params["rank_0"], params["rank_1"], params["rank_2"])
-#     model = MyTuckerTenDecomp(ranks=ranks, tol=1e-4)
-#     return model, params
-#
-#
-# def rhooi_builder(trial, T):
-#     n1, n2, n3 = T.shape
-#     params = {
-#         "rank_0": trial.suggest_int("rank_0", 1, min(20, n1)),
-#         "rank_1": trial.suggest_int("rank_1", 1, min(20, n2)),
-#         "rank_2": trial.suggest_int("rank_2", 1, min(20, n3)),
-#         "local_threshold": trial.suggest_float("local_threshold", 0, 3),
-#     }
-#
-#     ranks = (params["rank_0"], params["rank_1"], params["rank_2"])
-#     model = MyRHOOITenDecomp(
-#         ranks=ranks, local_threshold=params["local_threshold"], tol=1e-4
-#     )
-#     return model, params
-#
-#
-# def robust_cp_builder(trial, T):
-#     params = {
-#         "rank": trial.suggest_int("rank", 1, 20),
-#         "local_threshold": trial.suggest_float("local_threshold", 0, 2),
-#     }
-#
-#     model = MyRCPTenDecomp(
-#         rank=params["rank"], local_threshold=params["local_threshold"], tol=1e-4
-#     )
-#
-#     return model, params
-
-
 def main():
     tag = secrets.token_hex(4)
-    anomaly_type = "outage"
+    anomaly_type = "ddos"
 
-    # run_tensor_experiment(
-    #     experiment_name="Tensor_Decomp",
-    #     model_name="GRTucker",
-    #     suggest_and_build_model=grTucker_builder,
-    #     anomaly_type=anomaly_type,
-    #     tag=tag,
-    # )
+    anomalies = ("spikes", "events", "ddos", "outage")
+    for anomaly in anomalies:
+        # run_tensor_experiment(
+        #     experiment_name="Tensor_Decomp",
+        #     model_name="GRTen",
+        #     suggest_and_build_model=grten_builder_no_robust,
+        #     anomaly_type=anomaly,
+        #     tag=tag,
+        # )
 
-    run_tensor_experiment(
-        experiment_name="Tensor_Decomp",
-        model_name="GRTen no Robust",
-        suggest_and_build_model=grten_builder_no_robust,
-        anomaly_type=anomaly_type,
-        tag=tag,
-    )
-
-    run_tensor_experiment(
-        experiment_name="Tensor_Decomp",
-        model_name="GRTucker_no_robust",
-        suggest_and_build_model=grTucker_builder_no_robust,
-        anomaly_type=anomaly_type,
-        tag=tag,
-    )
-
-    # run_tensor_experiment(
-    #     experiment_name="Tensor_Decomp",
-    #     model_name="GRTen",
-    #     suggest_and_build_model=grten_builder,
-    #     anomaly_type=anomaly_type,
-    #     tag=tag,
-    # )
-
-    # run_tensor_experiment(
-    #     experiment_name="Tensor_Decomp",
-    #     model_name="Robust CP",
-    #     suggest_and_build_model=robust_cp_builder,
-    #     anomaly_type=anomaly_type,
-    #     tag=tag,
-    # )
-    #
-    # run_tensor_experiment(
-    #     experiment_name="Tensor_Decomp",
-    #     model_name="RHOOI",
-    #     suggest_and_build_model=rhooi_builder,
-    #     anomaly_type=anomaly_type,
-    #     tag=tag,
-    # )
-    # run_tensor_experiment(
-    #     experiment_name="Tensor_Decomp",
-    #     model_name="BasicCP",
-    #     suggest_and_build_model=cp_builder,
-    #     anomaly_type=anomaly_type,
-    #     tag=tag,
-    # )
-    #
-    # run_tensor_experiment(
-    #     experiment_name="Tensor_Decomp",
-    #     model_name="Basic Tucker",
-    #     suggest_and_build_model=tucker_builder,
-    #     anomaly_type=anomaly_type,
-    #     tag=tag,
-    # )
+        run_tensor_experiment(
+            experiment_name="Tensor_Decomp",
+            model_name="GRTucker",
+            suggest_and_build_model=grTucker_builder_no_robust,
+            anomaly_type=anomaly,
+            tag=tag,
+        )
 
 
 if __name__ == "__main__":

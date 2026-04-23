@@ -15,7 +15,6 @@ from utils.anomaly_injector import (
     inject_outage,
     inject_random_spikes_normal,
 )
-from utils.datasets import create_event_dataset_train, create_spike_dataset_train
 from utils.metrics import compute_metrics_with_optimal_threshold
 from utils.tensor_processing import (
     de_anomalize_tensor,
@@ -205,6 +204,6 @@ def ks_laplacians(basic_params):
 
 
 # plot_tucker_interval(tucker_lap_params)
-# plot_tucker_smooth(tucker_lap_params)
-plot_tucker_ks2(tucker_lap_params)
+plot_tucker_smooth(tucker_lap_params)
+# plot_tucker_ks2(tucker_lap_params)
 # ks_laplacians(tucker_lap_params)

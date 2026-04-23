@@ -3,8 +3,8 @@ spikes_configs:
     laps_params:
       lambda_1: 0
       lambda_2: 0
-      lambda_smooth: 2900 
-      lambda_interval: 8300
+      lambda_smooth: 100
+      lambda_interval: 0 
       measure: "dot"
       ks_1: 0
       ks_2: 0
@@ -12,28 +12,28 @@ spikes_configs:
     laps_params:
       lambda_1: 0
       lambda_2: 0
-      lambda_smooth: 111
-      lambda_interval: 24
+      lambda_smooth: 10
+      lambda_interval: 0
       measure: "dot"
       ks_1: 0
       ks_2: 0
 
 events_configs:
-  GRRTucker_no_robust:
-    laps_params:
-      lambda_1: 0
-      lambda_2: 0
-      lambda_smooth: 150
-      lambda_interval: 49 
-      measure: "dot"
-      ks_1: 0
-      ks_2: 0
   GRRCP_no_robust:
     laps_params:
       lambda_1: 0
       lambda_2: 0
-      lambda_smooth: 5259
-      lambda_interval: 126
+      lambda_smooth: 10
+      lambda_interval: 200
+      measure: "dot"
+      ks_1: 0
+      ks_2: 0
+  GRRTucker_no_robust:
+    laps_params:
+      lambda_1: 0
+      lambda_2: 0
+      lambda_smooth: 1
+      lambda_interval: 10
       measure: "dot"
       ks_1: 0
       ks_2: 0
@@ -44,8 +44,8 @@ ddos_configs:
     laps_params:
       lambda_1: 0
       lambda_2: 0
-      lambda_smooth: 9318
-      lambda_interval: 998 
+      lambda_smooth: 4000
+      lambda_interval: 4000 
       measure: "dot"
       ks_1: 0
       ks_2: 0

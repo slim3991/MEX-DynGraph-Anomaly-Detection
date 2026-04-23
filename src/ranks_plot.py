@@ -29,80 +29,89 @@ with open("src/model_config.yaml") as f:
 model_confs = m_conf[f"{ANOMALY_TYPE}_configs"]
 
 model_specs = [
-    # Graph Regularized Tucker (Robust)
-    # Graph Regularized Tucker (Non-Robust version)
-    {
-        "class": MyGRTuckerDecomp,
-        "kwargs": {
-            "local_threshold": 0,
-            "laplacian_parameters": model_confs["GRRTucker_no_robust"]["laps_params"],
-        },
-    },
-    {
-        "class": MyGRTuckerDecomp,
-        "kwargs": {
-            "local_threshold": None,
-            "laplacian_parameters": model_confs["GRRTucker_no_robust"]["laps_params"],
-        },
-    },
-    # Graph Regularized CP (Robust)
-    {
-        "class": MyGRTenDecomp,
-        "kwargs": {
-            "laplacian_parameters": model_confs["GRRCP_no_robust"]["laps_params"]
-        },
-    },
-    # Graph Regularized CP (Non-Robust version)
-    {
-        "class": MyGRTenDecomp,
-        "kwargs": {
-            "local_threshold": 0,
-            "laplacian_parameters": model_confs["GRRCP_no_robust"]["laps_params"],
-        },
-    },
-    # Standard Models
-    {"class": MyTuckerTenDecomp, "kwargs": {}},
+    # {
+    #     "class": MyGRTenDecomp,
+    #     "kwargs": {
+    #         "local_threshold": 0,
+    #         "laplacian_parameters": model_confs["GRRCP_no_robust"]["laps_params"],
+    #     },
+    # },
+    # {
+    #     "class": MyGRTenDecomp,
+    #     "kwargs": {
+    #         "laplacian_parameters": model_confs["GRRCP_no_robust"]["laps_params"]
+    #     },
+    # },
+    # {
+    #     "class": MyGRTuckerDecomp,
+    #     "kwargs": {
+    #         "local_threshold": 0,
+    #         "laplacian_parameters": model_confs["GRRTucker_no_robust"]["laps_params"],
+    #     },
+    # },
+    # {
+    #     "class": MyGRTuckerDecomp,
+    #     "kwargs": {
+    #         "local_threshold": None,
+    #         "laplacian_parameters": model_confs["GRRTucker_no_robust"]["laps_params"],
+    #     },
+    # },
+    # {"class": MyTuckerTenDecomp, "kwargs": {}},
     {"class": MyRHOOITenDecomp, "kwargs": {}},
-    {"class": MyCPTenDecomp, "kwargs": {}},
+    # {"class": MyCPTenDecomp, "kwargs": {}},
     {"class": MyRCPTenDecomp, "kwargs": {}},  # Robust CP
 ]
 
-# ... (imports and dataset functions remain the same)
 
+def plotting(anomaly_type: Optional[str] = None):
+    if anomaly_type is None:
+        anomaly_type = "ddos"
 
-def plotting():
-    with open("results_rank_sensitivity_ddos.json", "r") as f:
+    with open(f"figures/results_rank_sensitivity_{anomaly_type}.json", "r") as f:
         results = json.load(f)
 
-    plt.figure(figsize=(10, 7))
+    _, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 10), sharex=True, sharey=True)
 
     for model_name, data in results.items():
-        if model_name[0] == "_":
+        if model_name.startswith("_"):
             continue
-        plt.errorbar(
-            data["x"],
-            data["mean_auc"],
-            yerr=data["std_auc"],
-            label=model_name,
-            marker="o",
-            capsize=5,
-            linestyle="--",
-            alpha=0.8,
-        )
 
-    plt.xlabel("Tensor Rank")
-    plt.ylabel("Average PR AUC")
-    plt.title("Rank Sensitivity Analysis")
-    plt.legend(loc="lower right")
-    plt.grid(True, alpha=0.3)
+        plot_params = {
+            "x": data["x"],
+            "y": data["mean_auc"],
+            "yerr": data["std_auc"],
+            "label": model_name,
+            "marker": "o",
+            "capsize": 5,
+            "linestyle": "--",
+            "alpha": 0.8,
+        }
+
+        if "Tucker" in model_name or "RHOOI" in model_name:
+            ax1.errorbar(**plot_params)
+        else:
+            ax2.errorbar(**plot_params)
+
+    anomaly_type = "low-rank"
+    ax1.set_ylabel("Average PR AUC")
+    ax1.set_title(f"Rank Sensitivity Tucker ({anomaly_type})")
+    ax1.legend(loc="lower right")
+    ax1.grid(True, alpha=0.3)
+
+    ax2.set_xlabel("Tensor Rank")
+    ax2.set_ylabel("Average PR AUC")
+    ax2.set_title(f"Rank Sensitivity CP ({anomaly_type})")
+    ax2.legend(loc="lower right")
+    ax2.grid(True, alpha=0.3)
+
     plt.tight_layout()
     plt.show()
 
 
-plotting()
+plotting(ANOMALY_TYPE)
 exit()
 
-ranks_to_test = [5, 10, 15, 20, 25]
+ranks_to_test = [10, 15, 20, 25, 30]
 fixed_ampf = 8
 n_runs = 3
 
@@ -124,7 +133,7 @@ results["_meta"] = {
 print(ANOMALY_TYPE)
 for spec in model_specs:
     model_name = spec["class"].name()
-    if spec["kwargs"].get("local_threshold") == 0:
+    if spec["kwargs"].get("local_threshold") != 0:
         model_name += "-thresholded"
     print(model_name)
 
@@ -145,9 +154,7 @@ for spec in model_specs:
             resids = np.abs(T - T_hat)
 
             precision, recall, _ = precision_recall_curve(L.ravel(), resids.ravel())
-
-            indices = np.argsort(recall)
-            pr_auc = auc(recall[indices], precision[indices])
+            pr_auc = auc(recall, precision)
             aucs.append(pr_auc)
 
         mean_auc = float(np.mean(aucs))
@@ -157,10 +164,14 @@ for spec in model_specs:
         results[model_name]["mean_auc"].append(mean_auc)
         results[model_name]["std_auc"].append(std_auc)
 
-        print(f"Model: {model_name} | Rank: {r} | Mean AUC: {mean_auc:.4f}")
+        print(
+            f"Model: {model_name} | Rank: {r} | Mean AUC: {mean_auc:.4f}±{std_auc:.4f}"
+        )
 
-output_path = Path(f"results_rank_sensitivity_{ANOMALY_TYPE}.json")
+output_path = Path(f"figures/results_rank_sensitivity_{ANOMALY_TYPE}.json")
 with open(output_path, "w") as f:
     json.dump(results, f, indent=2)
+
+plotting(ANOMALY_TYPE)
 
 print(f"Saved results to {output_path}")

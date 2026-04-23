@@ -31,16 +31,19 @@ def optimal_f1_threshold(
     return optimal_threshold, f1_scores[best_idx]
 
 
-def detect_anomalies_soft(res, threshold: float | None = None):
-    if threshold is None:
-        abs_res = np.abs(res)
-        sigma = np.median(abs_res[abs_res < np.percentile(abs_res, 50)]) / 0.6745
-        # sigma = np.median(np.abs(res)) / 0.6745
-        # lam = 2.5 * sigma
-        lam = sigma * np.sqrt(2 * np.log(res.size))
-    else:
+def detect_anomalies_soft(
+    res, percentile: float | None = None, threshold: float | None = None
+):
+    abs_res = np.abs(res)
+    if threshold is not None:
         lam = threshold
-    E = np.sign(res) * np.maximum(np.abs(res) - lam, 0)
+    elif percentile is not None:
+        lam = np.percentile(abs_res, percentile)
+    else:
+        sigma = np.median(abs_res) / 0.6745
+        lam = 2.5 * sigma
+
+    E = np.sign(res) * np.maximum(abs_res - lam, 0)
     return E
 
 

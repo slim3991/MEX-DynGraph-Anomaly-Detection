@@ -18,18 +18,18 @@ class Transformer(Protocol):
 class MyRHOOITenDecomp(BaseEstimator, TransformerMixin):
     def __init__(
         self,
-        rank: Sequence[int],
-        local_threshold: Optional[float] = 1e-6,
-        threshold: Optional[float] = None,
+        rank: int | Sequence[int],
+        local_threshold: Optional[float] = None,
         tol=1e-6,
+        verbose: bool = False,
     ):
         if type(rank) == int:
             self.ranks = (rank, rank, rank)
         else:
             self.ranks = rank
 
+        self.verbose = verbose
         self.local_threshold = local_threshold
-        self.threshold = threshold
         self.tol = tol
 
         # Learned attributes
@@ -42,14 +42,13 @@ class MyRHOOITenDecomp(BaseEstimator, TransformerMixin):
 
     def fit(self, X: Tensor, y: Tensor):
         factors, _ = r_hooi(
-            X, ranks=self.ranks, threshold=self.local_threshold, tol=self.tol
+            X,
+            ranks=self.ranks,
+            threshold=self.local_threshold,
+            tol=self.tol,
+            verbose=self.verbose,
         )
         self.factors_ = factors
-
-        X_hat = tl.tucker_to_tensor(self.factors_)
-
-        if y is not None:
-            self.threshold_, _ = optimal_f1_threshold(X_hat, y)
 
         return self
 

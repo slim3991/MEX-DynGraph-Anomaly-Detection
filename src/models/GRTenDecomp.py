@@ -68,7 +68,6 @@ class MyGRTenDecomp(BaseEstimator, TransformerMixin):
 
         if y is not None:
             self.threshold_, _ = optimal_f1_threshold(self.X_hat_, y)
-
         return self
 
     def transform(self, X: Tensor) -> Tensor:
@@ -81,7 +80,6 @@ class MyGRTenDecomp(BaseEstimator, TransformerMixin):
 
 
 def make_laplacians(tensor, lap_param):
-    # Mode 0 & 1 (Pre-weighted)
     laps = []
     for m in [0, 1]:
         k_key = f"ks_{m+1}"
@@ -94,7 +92,6 @@ def make_laplacians(tensor, lap_param):
         else:
             laps.append(None)
 
-    # Mode 2 (Composite Temporal)
     size_3 = tensor.shape[2]
     lap3 = sparse.csr_matrix((size_3, size_3))
 
@@ -158,6 +155,7 @@ def graph_regularized_als(
                     x0=X,
                     verbose=False,
                     tol=tol,
+                    max_iter=2000,
                 )
                 factors[mode] = X
 
@@ -200,9 +198,6 @@ def global_cg_sylvester(A, B, C, x0=None, max_iter=1000, tol=1e-6, verbose=False
     denom = dA[:, None] + dB[None, :]
     denom[denom == 0] = 1e-12
 
-    def apply_preconditioner(R):
-        return R / denom
-
     if x0 is None:
         X = np.zeros_like(C)
         R = C.copy()
@@ -210,7 +205,7 @@ def global_cg_sylvester(A, B, C, x0=None, max_iter=1000, tol=1e-6, verbose=False
         X = x0
         R = C - (A @ X + X @ B)
 
-    Z = apply_preconditioner(R)
+    Z = R  # / denom
     P = Z.copy()
 
     rz_inner = np.vdot(R, Z).real
@@ -221,9 +216,8 @@ def global_cg_sylvester(A, B, C, x0=None, max_iter=1000, tol=1e-6, verbose=False
 
         denom_cg = np.vdot(P, W).real
         if denom_cg <= 1e-16:
-            # if verbose:
-            #     print(f"Breakdown at iter {k}")
-
+            if verbose:
+                print(f"Breakdown at iter {k}")
             break
 
         alpha = rz_inner / denom_cg
@@ -241,7 +235,7 @@ def global_cg_sylvester(A, B, C, x0=None, max_iter=1000, tol=1e-6, verbose=False
                 print("=" * 30 + "\n")
             return X
 
-        Z = apply_preconditioner(R)
+        Z = R  # / denom
 
         rz_new = np.vdot(R, Z).real
         beta = rz_new / rz_inner

@@ -4,6 +4,7 @@ from annoy import AnnoyIndex
 import numpy as np
 import numpy.typing as npt
 from scipy import sparse
+import scipy
 import tensorly as tl
 from scipy.sparse import lil_matrix, diags, eye
 
@@ -323,7 +324,101 @@ def make_ar_similarity_laplacian(size: int, lookback: int = 3, decay: float = 0.
 import matplotlib.colors as colors
 
 
+def create_kernel_matrix(n, c0=1.0):
+    # Weights based on your K^2,1 example
+    # Center weight is c0, first neighbor is 13/12, second is -1/12
+    row = np.zeros(n)
+    row[0] = c0  # Diagonal
+    row[1] = 13 / 12  # First neighbor
+    row[2] = -1 / 12  # Second neighbor
+
+    # Toeplitz creates the symmetric banded matrix
+    M = scipy.linalg.toeplitz(row)
+    return M
+
+
+# Example for a 6x6 system
+
+
+import numpy as np
+from scipy.linalg import toeplitz
+
+
+def create_generalized_kernel(n, r, l_power, c_coeffs, normalize=True):
+    """
+    Constructs a matrix based on the K^{2r+1, l} kernel.
+
+    Parameters:
+    n        : Size of the matrix (n x n)
+    r        : Reach (number of neighbors in the cosine sum)
+    l_power  : Smoothness power (exponent of the sinc function)
+    c_coeffs : List/Array of coefficients [c0, c1, ..., cr]
+    normalize: If True, weights sum to 1 (preserves signal average)
+    """
+
+    # 1. Start with the B-spline part (Sinc^l)
+    # A B-spline of order l is essentially a box filter convolved with itself l times.
+    # For l=1, it's [1, 1]. For l=2, it's [1, 2, 1], etc.
+    weights = np.array([1.0, 1.0])
+    for _ in range(l_power - 1):
+        weights = np.convolve(weights, [1.0, 1.0])
+
+    # 2. Apply the Correction part (c0 + 2 * sum(c_gamma * cos(gamma * xi)))
+    # In the spatial domain, cos(gamma * xi) corresponds to shifting
+    # the signal by gamma and -gamma and averaging.
+
+    # We'll treat the B-spline weights as our base signal
+    base_signal = weights / np.sum(weights)  # Normalize base B-spline
+
+    # The cosine sum acts as a FIR filter: [c_r, ..., c_1, c_0, c_1, ..., c_r]
+    correction_filter = np.zeros(2 * r + 1)
+    correction_filter[r] = c_coeffs[0]  # c0 at the center
+    for gamma in range(1, r + 1):
+        val = c_coeffs[gamma]
+        correction_filter[r - gamma] = val
+        correction_filter[r + gamma] = val
+
+    # 3. Combine them via convolution
+    final_weights = np.convolve(base_signal, correction_filter)
+
+    if normalize:
+        final_weights /= np.sum(final_weights)
+
+    # 4. Create the Toeplitz row
+    # We center the final_weights and pad with zeros to match matrix size n
+    mid = len(final_weights) // 2
+    row = np.zeros(n)
+
+    # Fill the row starting from the diagonal (index 0)
+    # We only take the right half of the symmetric filter
+    reach = min(n, len(final_weights) - mid)
+    for i in range(reach):
+        row[i] = final_weights[mid + i]
+
+    return toeplitz(row)
+
+
 def test():
+    c_coeffs_r2 = [1.20, -0.15, 0.05]
+
+    L = create_generalized_kernel(
+        n=100,
+        r=2,  # Greater reach
+        l_power=2,  # Keeping it smooth
+        c_coeffs=c_coeffs_r2,
+    )
+    plt.figure(figsize=(8, 6))
+    plt.imshow(
+        L,
+        cmap="RdBu_r",
+        # norm=colors.SymLogNorm(linthresh=0.01, linscale=1, vmin=-1, vmax=5),
+    )
+    plt.colorbar(label="Weight")
+    plt.title("Interval Proximity Laplacian\n(Normalized)")
+    plt.show()
+
+
+def plot():
     size = 70
     L_ar = make_ar_similarity_laplacian(size, lookback=8, decay=0.8)
     L_int = make_interval_lap(size=size, interval=10)

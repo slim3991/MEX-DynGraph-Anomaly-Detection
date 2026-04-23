@@ -68,6 +68,7 @@ class MyGRTuckerDecomp(BaseEstimator, TransformerMixin):
         self.local_threshold = local_threshold
         self.threshold = threshold
         self.tol = tol
+        self.decomp_ = None
 
     @staticmethod
     def name():
@@ -81,17 +82,15 @@ class MyGRTuckerDecomp(BaseEstimator, TransformerMixin):
             threshold=self.local_threshold,
             tol=self.tol,
         )
-        self.X_hat_ = tl.tenalg.multi_mode_dot(core, factors)
-        if y is not None:
-            self.threshold_, _ = optimal_f1_threshold(self.X_hat_, y)
+        self.decomp_ = (core, factors)
 
         return self
 
     def transform(self, X: Tensor) -> Tensor:
 
-        check_is_fitted(self, ["X_hat_"])
+        check_is_fitted(self, ["decomp_"])
 
-        return self.X_hat_
+        return tl.tucker_to_tensor(self.decomp_)
 
     def residuals(self, X: Tensor) -> Tensor:
 
@@ -143,7 +142,7 @@ def graph_regularized_als(
             else:
                 # Solve Sylvester: L @ X + X @ S = B
                 factors[mode] = global_cg_sylvester(
-                    laps[mode], S, B, x0=factors[mode], tol=tol
+                    laps[mode], S, B, x0=factors[mode], tol=tol, max_iter=2000
                 )
 
             # Re-orthogonalize for Tucker stability

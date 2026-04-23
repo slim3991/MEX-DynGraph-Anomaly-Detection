@@ -110,7 +110,7 @@ def create_outage_dataset(
 
 
 def create_ddos_dataset(
-    train_test: Literal["train", "test"], ampf: float = 6
+    train_test: Literal["train", "test"], ampf: float = 10
 ) -> Tuple[npt.NDArray, npt.NDArray, None, dict]:
 
     T, data_param = _get_dataset(train_test)
