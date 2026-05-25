@@ -3,7 +3,7 @@ spikes_configs:
     laps_params:
       lambda_1: 0
       lambda_2: 0
-      lambda_smooth: 100
+      lambda_smooth: 600
       lambda_interval: 0 
       measure: "dot"
       ks_1: 0
@@ -12,8 +12,8 @@ spikes_configs:
     laps_params:
       lambda_1: 0
       lambda_2: 0
-      lambda_smooth: 10
-      lambda_interval: 0
+      lambda_smooth: 80
+      lambda_interval: 20
       measure: "dot"
       ks_1: 0
       ks_2: 0
@@ -23,8 +23,8 @@ events_configs:
     laps_params:
       lambda_1: 0
       lambda_2: 0
-      lambda_smooth: 10
-      lambda_interval: 200
+      lambda_smooth: 1000
+      lambda_interval: 40
       measure: "dot"
       ks_1: 0
       ks_2: 0
@@ -32,20 +32,19 @@ events_configs:
     laps_params:
       lambda_1: 0
       lambda_2: 0
-      lambda_smooth: 1
-      lambda_interval: 10
+      lambda_smooth: 1000
+      lambda_interval: 200
       measure: "dot"
       ks_1: 0
       ks_2: 0
-
 
 ddos_configs:
   GRRCP_no_robust:
     laps_params:
       lambda_1: 0
       lambda_2: 0
-      lambda_smooth: 4000
-      lambda_interval: 4000 
+      lambda_smooth: 1000
+      lambda_interval: 1000 
       measure: "dot"
       ks_1: 0
       ks_2: 0
@@ -53,30 +52,30 @@ ddos_configs:
     laps_params:
       lambda_1: 0
       lambda_2: 0
-      lambda_smooth: 208
+      lambda_smooth: 5000
       lambda_interval: 100
       measure: "dot"
       ks_1: 0
       ks_2: 0
 
-outage_configs:
-  GRRCP_no_robust:
-    laps_params:
-      lambda_1: 0
-      lambda_2: 0
-      lambda_smooth: 
-      lambda_interval:  
-      measure: "dot"
-      ks_1: 0
-      ks_2: 0
-  GRRTucker_no_robust:
-    laps_params:
-      lambda_1: 0
-      lambda_2: 0
-      lambda_smooth: 
-      lambda_interval: 
-      measure: "dot"
-      ks_1: 0
-      ks_2: 0
+# outage_configs:
+#   GRRCP_no_robust:
+#     laps_params:
+#       lambda_1: 0
+#       lambda_2: 0
+#       lambda_smooth: 
+#       lambda_interval:  
+#       measure: "dot"
+#       ks_1: 0
+#       ks_2: 0
+#   GRRTucker_no_robust:
+#     laps_params:
+#       lambda_1: 0
+#       lambda_2: 0
+#       lambda_smooth: 
+#       lambda_interval: 
+#       measure: "dot"
+#       ks_1: 0
+#       ks_2: 0
 
 

@@ -11,7 +11,7 @@ def cp_als_robust(tensor, rank, n_iter=50, tol=1e-4, threshold=None):
     n_modes = len(shape)
     # factors = [np.random.rand(shape[i], rank) for i in range(n_modes)]
     (_, factors) = tl.decomposition.CP(
-        rank=rank, tol=tol, n_iter_max=n_iter, init="random"
+        rank=rank, tol=0.1, n_iter_max=n_iter, init="random"
     ).fit_transform(tensor)
     prev_error = 0
     M = deepcopy(tensor)
@@ -51,12 +51,9 @@ def cp_als_robust(tensor, rank, n_iter=50, tol=1e-4, threshold=None):
         if iteration == 0 or iteration % 4 == 0:
             X_tensor = tl.cp_to_tensor((None, factors))
             residuals = tensor - X_tensor
-            S = (
-                detect_anomalies_soft(residuals, threshold=threshold)
-                if threshold
-                else 0
-            )
-            M = tensor - S
+            if threshold != 0:
+                S = detect_anomalies_soft(residuals, threshold=threshold)
+                M = tensor - S
 
             error = np.linalg.norm(residuals) / tl.norm(M)
             diff = abs(prev_error - error)

@@ -32,21 +32,20 @@ from utils.tensor_processing import (
 )
 
 
-Tp = np.load("data/abiline_ten.npy")
-Tp = Tp[:, :, :4500]
+# Tp = np.load("data/abiline_ten.npy")
+# Tp = Tp[:, :, :4500]
+
 
 # T = T[:, :, 10_000:15_000]
-for i, j in product(range(12), repeat=2):
-    Tp[i, j, :] = normalize_tensor(Tp[i, j, :], "minmax")
+# for i, j in product(range(12), repeat=2):
+#     Tp[i, j, :] = normalize_tensor(Tp[i, j, :], "minmax")
 # T = normalize_tensor(T, "minmax")
-T = de_anomalize_tensor(Tp, 20)
+# T = de_anomalize_tensor(Tp, 20)
 
 # T = normalize_tensor(T, "minmax")
-source, dest = np.random.randint(0, 11), np.random.randint(0, 11)
-# source, dest = 5, 8
+# source, dest = np.random.randint(0, 11), np.random.randint(0, 11)
+source, dest = 5, 8
 
-T, L, _, _ = create_event_dataset("train", ampf=10)
-# T, L, _, _ = create_spike_dataset("train")
 
 # # ddos injection
 # L = np.zeros_like(T)
@@ -56,54 +55,67 @@ T, L, _, _ = create_event_dataset("train", ampf=10)
 #     L += Lp
 # L = np.where(L > 0, 1, 0)
 
-# T, L, _, _ = create_outage_dataset("train")
+T, L, _, _ = create_spike_dataset("train")
+# T, L, _, _ = create_event_dataset("train")
 # T, L, _, _ = create_ddos_dataset("train")
 
-# lap_parms = {
-#     "lambda_1": 0,
-#     "lambda_2": 0,
-#     "lambda_smooth": 10,
-#     "lambda_interval": 200,
-#     "measure": "dot",
-#     "ks_1": 0,
-#     "ks_2": 5,
-# }
-# tucker_lap_params = {
-#     "lambda_1": 0,
-#     "lambda_2": 0,
-#     "lambda_smooth": 1,
-#     "lambda_interval": 10,
-#     "measure": "euclidean",
-#     "ks_1": 0,
-#     "ks_2": 0,
-# }
+cp_lap_params = {
+    "lambda_1": 0,
+    "lambda_2": 0,
+    "lambda_smooth": 1000,
+    "lambda_interval": 1000,
+    # "lambda_knn": 10000,
+    "measure": "dot",
+    "ks_1": 0,
+    "ks_2": 5,
+}
+tucker_lap_params = {
+    "lambda_1": 0,
+    "lambda_2": 0,
+    "lambda_smooth": 100,
+    "lambda_interval": 0,
+    "measure": "euclidean",
+    "ks_1": 0,
+    "ks_2": 0,
+}
 
-ANOMALY_TYPE = "events"
+# ANOMALY_TYPE = "spikes"
 # with open("src/model_config.yaml") as f:
 #     m_conf = yaml.safe_load(f)
 # model_confs = m_conf[f"{ANOMALY_TYPE}_configs"]
-# cp_lap_params = model_confs["GRRCP_no_robust"]["laps_params"]
+# # cp_lap_params = model_confs["GRRCP_no_robust"]["laps_params"]
 # tucker_lap_params = model_confs["GRRTucker_no_robust"]["laps_params"]
 
-rank = (15, 15, 15)
+# print(cp_lap_params)
+rank = (20, 20, 20)
 
-# X_hat = MyGRTuckerDecomp(
-#     rank=rank, laplacian_parameters=tucker_lap_params, tol=1e-4, threshold=0
+X_hat = MyGRTuckerDecomp(
+    rank=rank,
+    laplacian_parameters=tucker_lap_params,
+    tol=1e-4,
+    local_threshold=None,
+).fit_transform(T, L)
+print("hello")
+X_hat_basic = tl.tucker_to_tensor(
+    tl.decomposition.tucker(T, rank=rank, tol=1e-4, init="random")
+)
+# X_hat_rob_t = MyRHOOITenDecomp(rank=rank, tol=1e-4).fit_transform(T, L)
+
+rank = 20
+# X_hat_thres = MyGRTenDecomp(
+#     rank=rank,
+#     laplacian_parameters=cp_lap_params,
+#     threshold=None,
+#     tol=1e-4,
 # ).fit_transform(T, L)
-
-# X_hat_basic = tl.tucker_to_tensor(
-#     tl.decomposition.tucker(T, rank=rank, tol=1e-4, init="random")
-# )
-X_hat_rob_t = MyRHOOITenDecomp(rank=rank, tol=1e-4).fit_transform(T, L)
-
+# print("start GR")
 # X_hat = MyGRTenDecomp(
 #     rank=rank,
 #     laplacian_parameters=cp_lap_params,
-#     threshold=0,
+#     local_threshold=0,
 #     tol=1e-4,
 # ).fit_transform(T, L)
-
-rank = 15
+# print("start basic")
 # X_hat_basic = tl.cp_to_tensor(
 #     tl.decomposition.parafac(
 #         T,
@@ -112,34 +124,42 @@ rank = 15
 #         init="random",
 #     )
 # )
-X_hat_rob = MyRCPTenDecomp(rank=rank, tol=1e-4).fit_transform(T, L)
+# X_hat_rob = MyRCPTenDecomp(
+#     rank=rank,
+#     tol=1e-4,
+# ).fit_transform(T, L)
+# print("done")
+# X_hat_rob = MyRCPTenDecomp(rank=rank, tol=1e-4).fit_transform(T, L)
 
-# res = np.abs(X_hat - T)
-# precision, recall, thresholds = precision_recall_curve(L.ravel(), res.ravel())
-# pr_auc = auc(recall, precision)
-# print("pr-auc, graph: ", pr_auc)
-
-res = np.abs(X_hat_rob - T)
-precision, recall, thresholds = precision_recall_curve(L.flatten(), res.flatten())
+res = np.abs(X_hat - T)
+precision, recall, thresholds = precision_recall_curve(L.ravel(), res.ravel())
 pr_auc = auc(recall, precision)
-print("pr-auc, robust: ", pr_auc)
+print("pr-auc, graph: ", pr_auc)
 
+# res = np.abs(X_hat_rob - T)
+# precision, recall, thresholds = precision_recall_curve(L.flatten(), res.flatten())
+# pr_auc = auc(recall, precision)
+# print("pr-auc, robust: ", pr_auc)
+
+res = np.abs(X_hat_basic - T)
 precision, recall, thresholds = precision_recall_curve(L.flatten(), res.flatten())
 pr_auc = auc(recall, precision)
 print("pr-auc, basic: ", pr_auc)
 
+# print("graph_thres: ", tl.norm(X_hat_thres - Tp) / tl.norm(Tp))
 # print("graph: ", tl.norm(X_hat - Tp) / tl.norm(Tp))
-print("robust: ", tl.norm(X_hat_rob - Tp) / tl.norm(Tp))
+# print("robust: ", tl.norm(X_hat_rob - Tp) / tl.norm(Tp))
 # print("basic: ", tl.norm(X_hat_basic - Tp) / tl.norm(Tp))
 
 
 plt.plot(L[source, dest, :], alpha=0.5)
 plt.plot(T[source, dest, :], alpha=0.5)
-# plt.plot((X_hat_basic[source, dest, :]), label="Basic")
-plt.plot((X_hat_rob[source, dest, :]), label="robust")
-plt.plot((X_hat_rob_t[source, dest, :]), label="robust tucker")
+plt.plot((X_hat_basic[source, dest, :]), label="Basic")
+# plt.plot((X_hat_rob[source, dest, :]), label="robust")
+# plt.plot((X_hat_rob_t[source, dest, :]), label="robust tucker")
 
-# plt.plot((X_hat[source, dest, :]), label="Graph-Regularized")
+# plt.plot((X_hat_thres[source, dest, :]), label="Graph-thres")
+plt.plot((X_hat[source, dest, :]), label="Graph-Regularized")
 plt.legend()
 plt.show()
 exit()

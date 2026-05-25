@@ -50,7 +50,7 @@ class MyRCPTenDecomp(BaseEstimator, TransformerMixin):
 
     def transform(self, X: Tensor) -> Tensor:
         """
-        Returns the low-rank reconstruction learned during fit.
+        Returns the low-rank reconstruction learned du3ring fit.
         """
         check_is_fitted(self, ["X_hat_"])
         return self.X_hat_

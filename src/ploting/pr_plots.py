@@ -30,19 +30,47 @@ def create_spike_dataset_train(ampf) -> Tuple[npt.NDArray, npt.NDArray, None, di
     return T, L, None, params | data_param
 
 
-with open("src/model_config.yaml") as f:
-    m_conf = yaml.safe_load(f)
-model_confs = m_conf["spikes_parameters"]
-models = [
-    MyCPTenDecomp(**model_confs["basic_cp"]),
-    MyTuckerTenDecomp(**model_confs["basic_tucker"]),
-    MyRCPTenDecomp(**model_confs["robust_cp"]),
-    MyRHOOITenDecomp(**model_confs["robust_tucker"]),
-    MyGRTenDecomp(**model_confs["GRRCP"]),
-    MyGRTenDecomp(**model_confs["GRRCP_no_robust"]),
-    MyGRTuckerDecomp(**model_confs["GRRTucker"]),
-    MyGRTuckerDecomp(**model_confs["GRRTucker_no_robust"]),
-]
+def model_specs_gen(anomaly_type):
+    with open("src/model_config.yaml") as f:
+        m_conf = yaml.safe_load(f)
+    model_confs = m_conf[f"{anomaly_type}_configs"]
+    model_specs = [
+        {
+            "class": MyGRTenDecomp,
+            "kwargs": {
+                "local_threshold": 0,
+                "laplacian_parameters": model_confs["GRRCP_no_robust"]["laps_params"],
+            },
+        },
+        {
+            "class": MyGRTenDecomp,
+            "kwargs": {
+                "laplacian_parameters": model_confs["GRRCP_no_robust"]["laps_params"]
+            },
+        },
+        {
+            "class": MyGRTuckerDecomp,
+            "kwargs": {
+                "local_threshold": 0,
+                "laplacian_parameters": model_confs["GRRTucker_no_robust"][
+                    "laps_params"
+                ],
+            },
+        },
+        {
+            "class": MyGRTuckerDecomp,
+            "kwargs": {
+                "laplacian_parameters": model_confs["GRRTucker_no_robust"][
+                    "laps_params"
+                ],
+            },
+        },
+        {"class": MyTuckerTenDecomp, "kwargs": {}},
+        {"class": MyRHOOITenDecomp, "kwargs": {}},
+        {"class": MyCPTenDecomp, "kwargs": {}},
+        {"class": MyRCPTenDecomp, "kwargs": {}},  # Robust CP
+    ]
+    return model_specs
 
 
 mean_recall = np.linspace(0, 1, 100)

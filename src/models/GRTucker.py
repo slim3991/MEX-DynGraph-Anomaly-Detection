@@ -2,6 +2,7 @@ from annoy import AnnoyIndex
 import numpy.typing as npt
 import numpy as np
 from scipy import sparse
+import scipy
 from scipy.sparse import diags, eye, lil_matrix
 import tensorly as tl
 from typing import Dict, List, Literal, Optional, Sequence, Tuple
@@ -10,6 +11,7 @@ from tensorly.cp_tensor import unfolding_dot_khatri_rao
 from tensorly.tucker_tensor import multi_mode_dot
 
 from utils.tensor_processing import (
+    create_generalized_kernel,
     make_ar_similarity_laplacian,
     make_interval_lap,
     make_mode_laplacian,
@@ -27,7 +29,11 @@ def make_laplacians(tensor, lap_param):
         l_key = f"lambda_{m+1}"
         if lap_param.get(k_key, 0) != 0 and lap_param.get(l_key, 0) != 0:
             L = lap_param[l_key] * make_mode_laplacian(
-                tensor, mode=m, k=lap_param[k_key], measure=lap_param["measure"]
+                tensor,
+                mode=m,
+                k=lap_param[k_key],
+                measure=lap_param["measure"],
+                sparse=False,
             )
             laps.append(L)
         else:
@@ -38,13 +44,33 @@ def make_laplacians(tensor, lap_param):
 
     if lap_param.get("lambda_interval", 0) != 0:
         lap3 += lap_param["lambda_interval"] * make_interval_lap(
-            size=size_3, interval=lap_param.get("interval", 288)
+            size=size_3, interval=lap_param.get("interval", 288 * 7)
         )
 
     if lap_param.get("lambda_smooth", 0) != 0:
         lap3 += lap_param["lambda_smooth"] * make_ar_similarity_laplacian(
             size=size_3, lookback=lap_param.get("lookback", 5), decay=0.5
         )
+    if lap_param.get("lambda_3", 0) != 0:
+        lap3 += lap_param["lambda_3"] * make_mode_laplacian(
+            tensor=tensor,
+            k=lap_param["ks_3"],
+            mode=2,
+            measure=lap_param["measure"],
+            sparse=True,
+        )
+    if lap_param.get("lambda_JR", 0) != 0:
+        c_vals = [1.20, -0.15, 0.05]
+        # c_vals = [13 / 12, -1 / 12]
+
+        lap = create_generalized_kernel(
+            n=size_3,
+            r=2,  # Greater reach
+            l_power=1,
+            c_coeffs=c_vals,
+        )
+        lap3 += lap_param.get("lambda_JR", 0) * sparse.csr_matrix(lap)
+        # print(lap3)
 
     laps.append(lap3 if lap3.nnz > 0 else None)
     return laps
@@ -56,7 +82,6 @@ class MyGRTuckerDecomp(BaseEstimator, TransformerMixin):
         laplacian_parameters: Dict[str, float],
         rank: Tuple[int, int, int] = (5, 5, 5),
         local_threshold: Optional[float] = None,
-        threshold: Optional[float] = None,
         tol=1e-6,
     ):
         if type(rank) == int:
@@ -66,7 +91,6 @@ class MyGRTuckerDecomp(BaseEstimator, TransformerMixin):
 
         self.laplacian_parameters = laplacian_parameters
         self.local_threshold = local_threshold
-        self.threshold = threshold
         self.tol = tol
         self.decomp_ = None
 
@@ -109,7 +133,7 @@ def graph_regularized_als(
     verbose=False,
 ):
     t_decomp = tl.decomposition.tucker(
-        tensor=tensor, rank=ranks, init="random", tol=tol
+        tensor=tensor, rank=ranks, init="random", tol=0.1
     )
     core, factors = t_decomp.core, t_decomp.factors
 

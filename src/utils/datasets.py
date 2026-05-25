@@ -14,10 +14,17 @@ type dataset_fetcher = Callable[
 ]
 
 
+SPIKES_AMPF = 8
+EVENTS_AMPF = 8  # ampf <-> amplitude factor
+DDOS_AMPF = 7
+
+DATASET_LENGHT = 4000
+
+
 def get_test_dataset() -> Tuple[npt.NDArray, dict]:
     T = np.load("data/abiline_ten.npy").astype("float64")
     start = 15000
-    end = start + 4500
+    end = start + DATASET_LENGHT
     T = T[:, :, start:end]
     preprocess_rank = 20
     keep_percentile = 95
@@ -39,7 +46,7 @@ def get_test_dataset() -> Tuple[npt.NDArray, dict]:
 def get_train_dataset() -> Tuple[npt.NDArray, dict]:
     T = np.load("data/abiline_ten.npy").astype("float64")
     start = 0
-    end = 4500
+    end = DATASET_LENGHT
     T = T[:, :, start:end]
     preprocess_rank = 20
     keep_percentile = 95
@@ -68,7 +75,7 @@ def _get_dataset(train_test: Literal["train", "test"]) -> Tuple[npt.NDArray, dic
 
 
 def create_spike_dataset(
-    train_test: Literal["train", "test"], ampf: float = 6
+    train_test: Literal["train", "test"], ampf: float = SPIKES_AMPF
 ) -> Tuple[npt.NDArray, npt.NDArray, None, dict]:
 
     T, data_param = _get_dataset(train_test)
@@ -110,7 +117,7 @@ def create_outage_dataset(
 
 
 def create_ddos_dataset(
-    train_test: Literal["train", "test"], ampf: float = 10
+    train_test: Literal["train", "test"], ampf: float = DDOS_AMPF
 ) -> Tuple[npt.NDArray, npt.NDArray, None, dict]:
 
     T, data_param = _get_dataset(train_test)
@@ -145,16 +152,17 @@ def create_ddos_dataset(
 
 def create_event_dataset(
     train_test: Literal["train", "test"],
-    ampf: float = 6,
+    ampf: float = EVENTS_AMPF,
 ) -> Tuple[npt.NDArray, npt.NDArray, list, dict]:
 
+    MAX_DURATION = 50
     T, data_param = _get_dataset(train_test)
     n_shapes = 100
     params = {
         "start_min": 20,
-        "start_max": 4000,
+        "start_max": DATASET_LENGHT - MAX_DURATION,
         "min_duration": 10,
-        "max_duration": 50,
+        "max_duration": MAX_DURATION,
         "n_shapes": n_shapes,
         "amplitude_factor": ampf,
     }

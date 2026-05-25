@@ -395,18 +395,24 @@ def create_generalized_kernel(n, r, l_power, c_coeffs, normalize=True):
     for i in range(reach):
         row[i] = final_weights[mid + i]
 
-    return toeplitz(row)
+    tp = toeplitz(row)
+    L = np.diag(np.sum(tp, axis=1)) - tp
+
+    return tp
 
 
 def test():
-    c_coeffs_r2 = [1.20, -0.15, 0.05]
+    # c_coeffs_r2 = [1.20, -0.15, 0.05]
+    c_vals = [13 / 12, -1 / 12]
 
     L = create_generalized_kernel(
         n=100,
-        r=2,  # Greater reach
-        l_power=2,  # Keeping it smooth
-        c_coeffs=c_coeffs_r2,
+        r=1,  # Greater reach
+        l_power=1,  # Keeping it smooth
+        c_coeffs=c_vals,
     )
+    print(L[2, :10])
+    exit()
     plt.figure(figsize=(8, 6))
     plt.imshow(
         L,
@@ -434,7 +440,7 @@ def plot():
         norm=colors.PowerNorm(gamma=0.5),
     )
     plt.colorbar(label="Weight")
-    plt.title("Interval Proximity Laplacian\n(Normalized)")
+    plt.title("Diurnal Laplacian\n(Normalized)")
     plt.show()
 
     # 2. Separate Plot for AR Similarity
@@ -442,14 +448,14 @@ def plot():
     # Alternatively, use a power-law norm to "dim" the diagonal
     plt.imshow(
         L_ar.toarray(),
-        cmap="PRGn",
+        cmap="RdBu_r",
         norm=colors.PowerNorm(gamma=0.5),
         # norm=colors.SymLogNorm(linthresh=0.01, linscale=1, vmin=-1, vmax=5),
     )
     plt.colorbar(label="Weight")
-    plt.title("AR Similarity Laplacian\n(Normalized)")
+    plt.title("Smoothing Laplacian\n(Normalized)")
     plt.show()
 
 
 if __name__ == "__main__":
-    test()
+    plot()

@@ -1,10 +1,13 @@
 from logging import warning
 from typing import Tuple
+import warnings
 import numpy as np
 from scipy import sparse
 from sklearn.metrics import precision_recall_curve
 
 from utils.metrics import Metrics
+
+FIND_COND_NR = True
 
 
 def optimal_f1_threshold(
@@ -47,8 +50,46 @@ def detect_anomalies_soft(
     return E
 
 
-def global_cg_sylvester(A, B, C, x0=None, max_iter=1000, tol=1e-6, verbose=False):
+def gershgorin_bounds(matrix):
+    """
+    Estimates the lower and upper bounds of eigenvalues using
+    Gershgorin Circle Theorem.
+    """
+    A = np.array(matrix)
+    if A.shape[0] != A.shape[1]:
+        raise ValueError("Matrix must be square.")
 
+    n = A.shape[0]
+    min_bound = float("inf")
+    max_bound = float("-inf")
+
+    for i in range(n):
+        # Center is the diagonal element
+        center = A[i, i]
+
+        # Radius is the sum of absolute values of off-diagonal elements in the row
+        radius = np.sum(np.abs(A[i, :])) - np.abs(center)
+
+        # Calculate the interval for this specific disc
+        current_min = center - radius
+        current_max = center + radius
+
+        # Update global bounds
+        if current_min < min_bound:
+            min_bound = current_min
+        if current_max > max_bound:
+            max_bound = current_max
+
+    return min_bound, max_bound
+
+
+def print_approx_cond_number(A, B):
+    la, ua = gershgorin_bounds(A.toarray())
+    lb, ub = gershgorin_bounds(B)
+    print(f"Est condition number: {(ua+ub)/(la+lb)}")
+
+
+def global_cg_sylvester(A, B, C, x0=None, max_iter=1000, tol=1e-6, verbose=False):
     # Precompute diagonal preconditioner
     dA = A.diagonal()
     dB = B.diagonal()
@@ -62,8 +103,10 @@ def global_cg_sylvester(A, B, C, x0=None, max_iter=1000, tol=1e-6, verbose=False
 
     if x0 is None:
         X = np.zeros_like(C)
+        R = C.copy()
     else:
         X = x0
+        R = C - (A @ X + X @ B)
 
     R = C.copy()
     Z = apply_preconditioner(R)
@@ -76,8 +119,8 @@ def global_cg_sylvester(A, B, C, x0=None, max_iter=1000, tol=1e-6, verbose=False
 
         denom_cg = np.vdot(P, W).real
         if denom_cg <= 1e-16:
-            # if verbose:
-            #     print(f"Breakdown at iter {k}")
+            if verbose:
+                print(f"Breakdown at iter {k}")
 
             break
 
@@ -103,5 +146,4 @@ def global_cg_sylvester(A, B, C, x0=None, max_iter=1000, tol=1e-6, verbose=False
         if verbose and k % 10 == 0:
             res = np.sqrt(np.vdot(R, R).real)
             print(f"iter {k}, residual {res:.2e}")
-    warning.warn(f"CG did not converge, stoped at iteration: {k}")
     return X

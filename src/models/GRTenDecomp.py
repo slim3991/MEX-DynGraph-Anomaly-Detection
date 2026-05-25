@@ -29,8 +29,6 @@ class MyGRTenDecomp(BaseEstimator, TransformerMixin):
         laplacian_parameters: Dict[str, float | str],
         rank: int = 5,
         local_threshold: Optional[float] = None,
-        threshold: Optional[float] = None,
-        recompute_laps: bool = True,  # New flag to trigger internal updates
         measure: Literal[
             "angular", "euclidean", "manhattan", "hamming", "dot"
         ] = "euclidean",
@@ -39,8 +37,6 @@ class MyGRTenDecomp(BaseEstimator, TransformerMixin):
         self.rank = rank
         self.laplacian_parameters = laplacian_parameters
         self.local_threshold = local_threshold
-        self.recompute_laps = recompute_laps
-        self.threshold = threshold
         self.tol = tol
 
         # Learned attributes
@@ -97,13 +93,16 @@ def make_laplacians(tensor, lap_param):
 
     if lap_param.get("lambda_interval", 0) != 0:
         lap3 += lap_param["lambda_interval"] * make_interval_lap(
-            size=size_3, interval=lap_param.get("interval", 288)
+            size=size_3, interval=lap_param.get("interval", 288 * 7)
         )
 
     if lap_param.get("lambda_smooth", 0) != 0:
-        # Note: Ensure make_ar_similarity_laplacian is imported
         lap3 += lap_param["lambda_smooth"] * make_ar_similarity_laplacian(
             size=size_3, lookback=lap_param.get("lookback", 5), decay=0.5
+        )
+    if lap_param.get("lambda_knn", 0) != 0:
+        lap3 += lap_param["lambda_knn"] * make_mode_laplacian(
+            tensor=tensor, measure="euclidean", mode=2, normalize=False, sparse=True
         )
 
     laps.append(lap3 if lap3.nnz > 0 else None)
